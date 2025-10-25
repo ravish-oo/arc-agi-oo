@@ -11,5 +11,6 @@ from src.families.iso_color_map import IsoColorMapFamily
 from src.families.pixel_replicate import PixelReplicateFamily
 from src.families.block_down import BlockDownFamily
 from src.families.nps_down import NPSDownFamily
+from src.families.nps_up import NPSUpFamily
 
-__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily"]
+__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily"]
