@@ -115,8 +115,8 @@ When conflicts or ambiguities arise, resolve in this order:
 
 | Phase | Focus | Duration | Dependencies | Expected Coverage |
 |-------|-------|----------|--------------|-------------------|
-| 1 | Foundation (utils, Π, components) | 2 days | None | N/A |
-| 2 | 16 Global Families (P) | 2 days | Phase 1 | N/A |
+| 1 | Foundation (utils, Π, components) | 2 days | None | N/A ✅ |
+| 2 | 16 Global Families (P) | 2 days | Phase 1 | N/A ✅ |
 | 3 | Step 1 Solver (Global P) | 1-2 days | Phase 1, 2 | **28% baseline** |
 | 4 | Φ Signatures (features) | 2 days | Phase 1 | N/A |
 | 5 | Action Inference (A) | 1 day | Phase 4 | N/A |
@@ -230,19 +230,27 @@ Source-of-truth specifications
 - `arc-agi-kaggle-docs.md` — Competition rules
 
 ### `/docs/context-packs/`
-- Phase-specific implementation briefs (P1-01 through P1-06 complete; more added per phase)
+- Phase-specific implementation briefs
+  - **Phase 1**: P1-01 through P1-06 (foundation modules) ✅
+  - **Phase 2**: P2-01 through P2-16 (16 global families) ✅
 
 ### `/src/`
-Phase 1 Foundation modules (for APIs and usage, see architecture.md):
+**Phase 1 Foundation** (for APIs and usage, see architecture.md):
 - `utils.py` — Grid primitives, D8 transformations (dims, transpose, rotations, flips)
 - `canonicalization.py` — D8 isometries, Π canonical operator, OFA patch normalization
 - `components.py` — 8-connected components, bounding boxes, NPS boundary detection
 
+**Phase 2 Global Families** (`/src/families/`, 16 modules):
+- All 16 global P families implemented (Isometry, ColorMap, IsoColorMap, PixelReplicate, BlockDown, NPSDown, NPSUp, ParityTile, BlockPermutation, BlockSubstitution, RowPermutation, ColPermutation, SortRowsLex, SortColsLex, MirrorComplete, CopyMoveAllComponents)
+- See spec.md lines 19-27 for family definitions
+
 ### `/tests/`
-Phase 1 test suites (218 tests total; see architecture.md for breakdown)
+- **Phase 1**: 218 tests (utils, canonicalization, components) ✅
+- **Phase 2**: 581 tests (16 global families, comprehensive coverage) ✅
 
 ### `/reviews/`
-Phase 1 mathematical correctness verification (P1-01 through P1-06, all PASS)
+- **Phase 1**: P1-01 through P1-06 mathematical correctness verification (all PASS) ✅
+- **Phase 2**: P2-01 through P2-16 math-reviewer verification (all PASS) ✅
 
 ---
 
@@ -277,5 +285,5 @@ Phase 1 mathematical correctness verification (P1-01 through P1-06, all PASS)
 
 ---
 
-**Last updated:** 2025-10-24
+**Last updated:** 2025-10-25 (Phase 2 complete)
 **Maintainers:** Update this file when adding new anchors, modules, or resolving ambiguities.

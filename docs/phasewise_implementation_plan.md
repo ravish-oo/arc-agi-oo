@@ -144,7 +144,7 @@ Full Phase-1 WO lineup (titles only), each ≤500-LOC and dependency-free beyond
 
 ---
 
-### Phase 2: Global Families (16 Independent Modules)
+### Phase 2: Global Families (16 Independent Modules) ✅ COMPLETE
 
 **Duration:** 2 days
 **Deliverable:** All 16 global P families, each complete and tested
@@ -243,7 +243,7 @@ Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global famili
 * **P2-13 — SortRowsLex (lexicographic row sort)** ✅ COMPLETE
 * **P2-14 — SortColsLex (lexicographic column sort)** ✅ COMPLETE
 * **P2-15 — MirrorComplete (H/V/Diag symmetry completion)** ✅ COMPLETE
-* **P2-16 — CopyMoveAllComponents ((Δr,Δc) per color)**
+* **P2-16 — CopyMoveAllComponents ((Δr,Δc) per color)** ✅ COMPLETE
 
 These 16 are the locked global P menu (spec; families list), and Phase-2 implements each as an independent, fully tested module before Step-1 uses them.  
 
@@ -308,6 +308,14 @@ python tests/measure_coverage.py data/arc-agi_training_challenges.json
 - Baseline coverage expected: **25-30%**
 - Step 1 uses **first-pass** (not MDL) per fundamental_decisions.md
 - See primary-anchor.md lines 106-109 for Step 1 specification
+
+#### Implementation WOs
+Phase-3 WO lineup (titles only), each ≤500-LOC and dependency-clean:
+
+* **P3-01 — Step-1 Solver Core (loop 16 families, FY check, first-pass select)**
+* **P3-02 — Receipts: Global PASS/UNSAT (generate_receipt_global / generate_receipt_unsat)**
+* **P3-03 — CLI Runner for Step-1 (single-task exec, args: task file, task-id)**
+* **P3-04 — Coverage Meter (measure_coverage.py: run all trains, family breakdown, %)**
 
 ---
 
@@ -1062,5 +1070,3 @@ python tests/test_determinism.py data/arc-agi_evaluation_challenges.json
 5. **Add incrementally** - One missing piece at a time, measure impact
 
 ---
-
-**Implementation begins with Phase 1. Good luck!** 🚀
