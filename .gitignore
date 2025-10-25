@@ -130,6 +130,8 @@ dmypy.json
 
 # Data folder - contains datasets that shouldn't be pushed
 data/
+reviews/
+docs/context-packs/
 
 # macOS
 .DS_Store

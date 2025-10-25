@@ -99,6 +99,74 @@ When conflicts or ambiguities arise, resolve in this order:
 
 ---
 
+### `docs/phasewise_implementation_plan.md`
+**What:** Complete implementation roadmap with 12 sequential phases, checkboxes, and testing criteria
+**Purpose:** Ensure NO STUBS, inside-out dependency order, and measurable progress at every step
+**When to read:** BEFORE starting implementation AND to track progress during development
+
+**Golden Rules (lines 28-84):**
+1. NO STUBS, EVER — Never write code you can't test immediately
+2. Inside-Out Dependency Order — Only implement what you can test independently
+3. Test Everything Immediately — pytest after each module
+4. Measure Coverage After Each Vertical Slice — Track Step 1, Step 2, Step 3 coverage
+5. Only Advance When Phase is 100% Complete — All checkboxes ticked, all tests passing
+
+**The 12 Phases (lines 87-856):**
+
+| Phase | Focus | Duration | Dependencies | Expected Coverage |
+|-------|-------|----------|--------------|-------------------|
+| 1 | Foundation (utils, Π, components) | 2 days | None | N/A |
+| 2 | 16 Global Families (P) | 2 days | Phase 1 | N/A |
+| 3 | Step 1 Solver (Global P) | 1-2 days | Phase 1, 2 | **28% baseline** |
+| 4 | Φ Signatures (features) | 2 days | Phase 1 | N/A |
+| 5 | Action Inference (A) | 1 day | Phase 4 | N/A |
+| 6 | GLUE Stitching | 1 day | Phase 4, 5 | N/A |
+| 7 | Step 2 Solver (P+Φ+MDL) | 2 days | Phase 1-6 | **67% (+39%)** |
+| 8 | LUT (Local Lookup Tables) | 1 day | Phase 1 | N/A |
+| 9 | Step 3 Solver (LUT fallback) | 1 day | Phase 8 | **81% (+14%)** |
+| 10 | Main Solver (orchestration) | 1 day | Phase 3,7,9 | N/A |
+| 11 | Submission Wrapper | 1 day | Phase 10 | N/A |
+| 12 | UNSAT Analysis & Completion | 1-3 days | Phase 10, 11 | **95%+ target** |
+
+**Critical Complexity Zones (Zero Tolerance for Bugs):**
+- **Phase 1**: Π idempotence (Π² = Π), OFA normalization (order-of-FIRST-appearance)
+- **Phase 4**: Φ.3 stability (NEVER use Y features, only X)
+- **Phase 5**: FY exactness (bit-for-bit equality, no approximation)
+- **Phase 6**: GLUE disjointness (classes must partition perfectly)
+- **Phase 7**: MDL selection (4-level tie-breaking), loop over ALL P (not first-pass), shape safety
+
+**Code Size Estimate:** ~7000-8000 lines total
+- Phase 1: ~500 lines (LOW complexity)
+- Phase 2: ~2500 lines (MEDIUM - 16 independent modules)
+- Phase 4: ~800 lines (HIGH - 10+ feature types, index bookkeeping)
+- Phase 5-6: ~900 lines (MEDIUM-HIGH - tuple bookkeeping)
+- Phase 7: ~800 lines (HIGHEST - 7 nested concerns)
+- Phase 8-11: ~1500 lines (MEDIUM)
+
+**Testing Workflow (lines 859-888):**
+```bash
+# After each phase
+pytest tests/test_<module>.py              # Unit tests
+python src/solver_step<N>.py --task-id <id>  # Integration test (solver phases)
+python tests/measure_coverage.py            # Coverage measurement (vertical slices)
+```
+
+**Coverage Tracking (lines 890-945):**
+- Step 1 (Phase 3): 25-30% baseline (pure global transforms)
+- Step 2 (Phase 7): +35-45% boost (compositional power unlocks)
+- Step 3 (Phase 9): +10-20% (local pattern fallback)
+- Final (Phase 12): +10-15% (empirical completion via UNSAT analysis)
+
+**Use this plan to:**
+- Know what to implement next (sequential phases)
+- Track progress with checkboxes
+- Verify testing criteria before advancing
+- Estimate remaining work
+- Create context packs for specialized implementer agents
+- Review scope before agent assignment
+
+---
+
 ## Resolved Decisions & Ambiguities
 
 **→ For full details, see `docs/anchors/fundamental_decisions.md`**
@@ -156,7 +224,8 @@ Source-of-truth specifications
 
 ### `/docs/` (implementation guides)
 - `context_index.md` (this file) — Repository navigation map
-- `kaggle_submission_readiness.md.md` — Kaggle submission requirements and wrapper strategy
+- `phasewise_implementation_plan.md` — 12-phase implementation roadmap with checkboxes (see detailed section below)
+- `kaggle_submission_readiness.md` — Kaggle submission requirements and wrapper strategy
 - `arc-agi-kaggle-docs.md` — Competition rules and dataset description
 
 ---
@@ -197,6 +266,13 @@ Validation tests per primary-anchor:232-238:
 | Understand "should I loop all P in Step 2?" | fundamental_decisions.md Decision 1 |
 | Know what's locked vs empirical | fundamental_decisions.md Decision 3 |
 | Find out what's really blocking us | fundamental_decisions.md Decision 4 |
+| **Know what to implement next** | **phasewise_implementation_plan.md** |
+| **See implementation phases & checkboxes** | **phasewise_implementation_plan.md lines 87-856** |
+| **Understand the Golden Rules (NO STUBS)** | **phasewise_implementation_plan.md lines 28-84** |
+| **Check expected coverage progression** | **phasewise_implementation_plan.md lines 890-945** |
+| **Find critical complexity zones** | **This file → phasewise_implementation_plan.md section** |
+| **Estimate code size for a phase** | **This file → phasewise_implementation_plan.md section** |
+| **Create context pack for agent** | **phasewise_implementation_plan.md (specific phase)** |
 | Understand Kaggle submission requirements | submission_readiness.md |
 | Know how to format submission.json | submission_readiness.md "Output Format" |
 | Handle 2-attempt requirement | submission_readiness.md "Two-Attempt Challenge" |
