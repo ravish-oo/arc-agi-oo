@@ -132,7 +132,7 @@ pytest tests/test_components.py     # Components correct
 - 8-connected (not 4-connected) per fundamental_decisions.md Decision 10
 
 #### Implementation WOs
-Here’s the full Phase-1 WO lineup (titles only), each ≤500-LOC and dependency-free beyond prior WOs:
+Full Phase-1 WO lineup (titles only), each ≤500-LOC and dependency-free beyond prior WOs:
 
 * **P1-01 — Core Grid Utilities (dims, copy, deep_eq, transpose, rot90/180/270, flip_h/v)** ✅ COMPLETE
 * **P1-02 — D8 Isometries Registry (ISOMETRIES) and shape-safety contracts**
