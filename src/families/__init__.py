@@ -18,5 +18,6 @@ from src.families.block_substitution import BlockSubstitutionFamily
 from src.families.row_permutation import RowPermutationFamily
 from src.families.col_permutation import ColPermutationFamily
 from src.families.sort_rows import SortRowsLexFamily
+from src.families.sort_cols import SortColsLexFamily
 
-__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily", "ParityTileFamily", "BlockPermutationFamily", "BlockSubstitutionFamily", "RowPermutationFamily", "ColPermutationFamily", "SortRowsLexFamily"]
+__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily", "ParityTileFamily", "BlockPermutationFamily", "BlockSubstitutionFamily", "RowPermutationFamily", "ColPermutationFamily", "SortRowsLexFamily", "SortColsLexFamily"]
