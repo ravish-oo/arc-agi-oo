@@ -207,9 +207,10 @@ The sections below provide quick summaries. For complete reasoning and implement
 
 ### `/data/`
 ARC AGI dataset downloaded from Kaggle
-- Training challenges JSON
-- Evaluation set
-- Test set
+- `arc-agi_training_challenges.json` — Full 1000 training tasks
+- `arc1_training.json` — ARC-1 subset (391 original tasks from 2019)
+- `arc2_training.json` — ARC-2 subset (609 new tasks from 2024)
+- Evaluation and test sets
 
 ### `/docs/`
 All documentation and anchor files
@@ -233,6 +234,15 @@ Source-of-truth specifications
 - Phase-specific implementation briefs
   - **Phase 1**: P1-01 through P1-06 (foundation modules) ✅
   - **Phase 2**: P2-01 through P2-16 (16 global families) ✅
+  - **Phase 3**: P3-01 through P3-04 (Step-1 solver, receipts, CLI, coverage meter) ✅
+
+### `/reports/`
+Coverage tracking and metrics
+- `/reports/coverage/` — Step-1 solver coverage baselines (ARC-1 vs ARC-2 breakdown)
+
+### `/scripts/`
+Utility scripts
+- `split_arc_dataset.py` — Split training dataset into ARC-1 (391) and ARC-2 (609) subsets
 
 ### `/src/`
 **Phase 1 Foundation** (for APIs and usage, see architecture.md):
@@ -244,13 +254,20 @@ Source-of-truth specifications
 - All 16 global P families implemented (Isometry, ColorMap, IsoColorMap, PixelReplicate, BlockDown, NPSDown, NPSUp, ParityTile, BlockPermutation, BlockSubstitution, RowPermutation, ColPermutation, SortRowsLex, SortColsLex, MirrorComplete, CopyMoveAllComponents)
 - See spec.md lines 19-27 for family definitions
 
+**Phase 3 Step-1 Solver**:
+- `solver_step1.py` — Step-1 solver (global P only, first-pass selection) with CLI
+- `receipts.py` — Proof-of-work receipts (PASS/UNSAT, task_meta, stable hash)
+
 ### `/tests/`
 - **Phase 1**: 218 tests (utils, canonicalization, components) ✅
 - **Phase 2**: 581 tests (16 global families, comprehensive coverage) ✅
+- **Phase 3**: 55 tests (receipts, CLI, coverage meter) ✅
+- `measure_coverage.py` — Coverage measurement tool (deterministic, sorted output, per-family breakdown)
 
 ### `/reviews/`
 - **Phase 1**: P1-01 through P1-06 mathematical correctness verification (all PASS) ✅
 - **Phase 2**: P2-01 through P2-16 math-reviewer verification (all PASS) ✅
+- **Phase 3**: P3-02 (receipts), P3-04 (coverage meter) algorithm-guardian verification (all PASS) ✅
 
 ---
 
@@ -282,8 +299,10 @@ Source-of-truth specifications
 | Deal with UNSAT tasks in submission | submission_readiness.md "UNSAT Handling" |
 | Resolve conflicts/ambiguities | This file → "Resolved Decisions" or fundamental_decisions.md |
 | Check repo structure | This file → "Repository Structure" section or architecture.md |
+| **Check Step-1 coverage baselines** | **reports/coverage/** (ARC-1: 5.9%, ARC-2: 1.8%) |
+| **Measure coverage on dataset** | **tests/measure_coverage.py** |
 
 ---
 
-**Last updated:** 2025-10-25 (Phase 2 complete)
+**Last updated:** 2025-10-25 (Phase 3 complete, Phase 4 ready)
 **Maintainers:** Update this file when adding new anchors, modules, or resolving ambiguities.

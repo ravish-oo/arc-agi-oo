@@ -249,7 +249,7 @@ These 16 are the locked global P menu (spec; families list), and Phase-2 impleme
 
 ---
 
-### Phase 3: Step 1 Solver (First Vertical Slice)
+### Phase 3: Step 1 Solver (First Vertical Slice) ✅ COMPLETE
 
 **Duration:** 1-2 days
 **Deliverable:** Working Step 1 solver with baseline coverage
@@ -315,7 +315,7 @@ Phase-3 WO lineup (titles only), each ≤500-LOC and dependency-clean:
 * **P3-01 — Step-1 Solver Core (loop 16 families, FY check, first-pass select)** ✅ COMPLETE
 * **P3-02 — Receipts: Global PASS/UNSAT (generate_receipt_global / generate_receipt_unsat)** ✅ COMPLETE
 * **P3-03 — CLI Runner for Step-1 (single-task exec, args: task file, task-id)** ✅ COMPLETE
-* **P3-04 — Coverage Meter (measure_coverage.py: run all trains, family breakdown, %)**
+* **P3-04 — Coverage Meter (measure_coverage.py: run all trains, family breakdown, %)** ✅ COMPLETE
 
 ---
 
@@ -392,6 +392,16 @@ pytest tests/test_signatures.py  # All stability/finiteness/disjointness tests p
 - OFA is local (patch-level only) - see fundamental_decisions.md Decision 7
 - primary-anchor.md lines 63-82 for full Φ specification
 - This phase is **independent of solver** - pure feature engineering
+
+#### Implementation WOs
+P4-01 — Index Predicates: parity_mask, rowmod_mask, colmod_mask
+P4-02 — NPS Bands: row_band_masks, col_band_masks (via boundaries_by_any_change)
+P4-03 — Local Content: is_color_mask, touching_color_mask (4-neighbor, 1-step)
+P4-04 — Component IDs: component_id_table (8-connected, deterministic tie-break)
+P4-05 — Patch Canonicalizer Core: OFA + D8 key for arbitrary patch
+P4-06 — Patchkey Tables r∈{2,3,4}: patchkey_table (5×5, 7×7, 9×9)
+P4-07 — Φ Aggregator: phi_signature_tables(X) (assemble all features)
+P4-08 — Φ Test Suite: Φ.3 stability, finiteness, disjointness
 
 ---
 
