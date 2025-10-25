@@ -131,6 +131,17 @@ pytest tests/test_components.py     # Components correct
 - Use primary-anchor.md §1 (lines 37-42) for Π specification
 - 8-connected (not 4-connected) per fundamental_decisions.md Decision 10
 
+#### Implementation WOs
+Here’s the full Phase-1 WO lineup (titles only), each ≤500-LOC and dependency-free beyond prior WOs:
+
+* **P1-01 — Core Grid Utilities (dims, copy, deep_eq, transpose, rot90/180/270, flip_h/v)** ✅ COMPLETE
+* **P1-02 — D8 Isometries Registry (ISOMETRIES) and shape-safety contracts**
+* **P1-03 — Π: Lexicographic Canonical Grid over D8 (canonical_grid) + Π² tests**
+* **P1-04 — OFA Patch Recolor + D8 Patch Canonical (ofa_normalize_patch_colors, canonical_d8_patch) + Π² on patches**
+* **P1-05 — 8-Connected Components by Color + bbox (deterministic IDs, tie-breaks)**
+* **P1-06 — NPS Boundary Bands (boundaries_by_any_change) with row/col suites**
+
+
 ---
 
 ### Phase 2: Global Families (16 Independent Modules)
