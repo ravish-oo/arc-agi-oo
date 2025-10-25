@@ -154,8 +154,10 @@ Source-of-truth specifications
 - `fundamental_decisions.md` — Resolved confusions with step-by-step reasoning
 - `for-human-understanding.md` — Plain English summary (read this first for overview)
 
-### `/docs/context_index.md` (this file)
-Repository navigation map
+### `/docs/` (implementation guides)
+- `context_index.md` (this file) — Repository navigation map
+- `kaggle_submission_readiness.md.md` — Kaggle submission requirements and wrapper strategy
+- `arc-agi-kaggle-docs.md` — Competition rules and dataset description
 
 ---
 
@@ -195,6 +197,10 @@ Validation tests per primary-anchor:232-238:
 | Understand "should I loop all P in Step 2?" | fundamental_decisions.md Decision 1 |
 | Know what's locked vs empirical | fundamental_decisions.md Decision 3 |
 | Find out what's really blocking us | fundamental_decisions.md Decision 4 |
+| Understand Kaggle submission requirements | submission_readiness.md |
+| Know how to format submission.json | submission_readiness.md "Output Format" |
+| Handle 2-attempt requirement | submission_readiness.md "Two-Attempt Challenge" |
+| Deal with UNSAT tasks in submission | submission_readiness.md "UNSAT Handling" |
 | Resolve conflicts/ambiguities | This file → "Resolved Decisions" or fundamental_decisions.md |
 | Check repo structure | This file → "Repository Structure" section |
 
