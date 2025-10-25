@@ -158,6 +158,7 @@ def solve_step1(task: dict) -> dict:
     Args:
         task: dict with keys "train" (list of {"input": grid, "output": grid})
                            and "test" (list of {"input": grid})
+                           Optionally "id" for task identifier
 
     Returns:
         dict with keys:
@@ -184,21 +185,34 @@ def solve_step1(task: dict) -> dict:
     """
     # Edge case: malformed task
     if "train" not in task or "test" not in task:
+        # Build minimal task_meta for malformed task
+        task_meta = {
+            "task_id": task.get("id", "unknown"),
+            "train_n": len(task.get("train", [])),
+            "test_n": len(task.get("test", []))
+        }
         return {
             "status": "UNSAT",
             "predictions": None,
-            "receipt": generate_receipt_unsat("malformed_task")
+            "receipt": generate_receipt_unsat("malformed_task", task_meta)
         }
 
     train_pairs = task["train"]
     test_examples = task["test"]
+
+    # Build task_meta for receipts
+    task_meta = {
+        "task_id": task.get("id", "unknown"),
+        "train_n": len(train_pairs),
+        "test_n": len(test_examples)
+    }
 
     # Edge case: empty train
     if not train_pairs:
         return {
             "status": "UNSAT",
             "predictions": None,
-            "receipt": generate_receipt_unsat("no_train_pairs")
+            "receipt": generate_receipt_unsat("no_train_pairs", task_meta)
         }
 
     # Extract test inputs
@@ -220,7 +234,7 @@ def solve_step1(task: dict) -> dict:
                 return {
                     "status": "PASS",
                     "predictions": predictions,
-                    "receipt": generate_receipt_global(instance, task)
+                    "receipt": generate_receipt_global(instance, task_meta)
                 }
 
             except Exception:
@@ -232,5 +246,5 @@ def solve_step1(task: dict) -> dict:
     return {
         "status": "UNSAT",
         "predictions": None,
-        "receipt": generate_receipt_unsat("no_family_matched")
+        "receipt": generate_receipt_unsat("no_family_matched", task_meta)
     }

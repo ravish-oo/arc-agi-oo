@@ -42,9 +42,9 @@ def test_solve_step1_identity():
     assert result["predictions"] == [[[9, 0], [1, 2]]]
     assert result["receipt"]["mode"] == "global"
     assert result["receipt"]["solver"] == "Isometry"
-    assert result["receipt"]["step"] == 1
-    assert result["receipt"]["num_trains"] == 2
-    assert result["receipt"]["num_tests"] == 1
+    assert result["receipt"]["task"]["task_id"] == "unknown"
+    assert result["receipt"]["task"]["train_n"] == 2
+    assert result["receipt"]["task"]["test_n"] == 1
 
 
 def test_solve_step1_rot90():
@@ -122,7 +122,9 @@ def test_solve_step1_unsat():
     assert result["predictions"] is None
     assert result["receipt"]["mode"] == "unsat"
     assert result["receipt"]["reason"] == "no_family_matched"
-    assert result["receipt"]["witness"] is None
+    assert result["receipt"]["task"]["task_id"] == "unknown"
+    assert result["receipt"]["task"]["train_n"] == 2
+    assert result["receipt"]["task"]["test_n"] == 1
 
 
 # =============================
@@ -369,15 +371,13 @@ def test_receipt_pass_has_required_fields():
     # Required fields
     assert "mode" in receipt
     assert "solver" in receipt
-    assert "step" in receipt
-    assert "num_trains" in receipt
-    assert "num_tests" in receipt
+    assert "task" in receipt
 
     # Values
     assert receipt["mode"] == "global"
-    assert receipt["step"] == 1
-    assert receipt["num_trains"] == 1
-    assert receipt["num_tests"] == 1
+    assert receipt["task"]["task_id"] == "unknown"
+    assert receipt["task"]["train_n"] == 1
+    assert receipt["task"]["test_n"] == 1
 
 
 def test_receipt_unsat_has_required_fields():
@@ -394,15 +394,15 @@ def test_receipt_unsat_has_required_fields():
 
     # Required fields
     assert "mode" in receipt
-    assert "step" in receipt
     assert "reason" in receipt
-    assert "witness" in receipt
+    assert "task" in receipt
 
     # Values
     assert receipt["mode"] == "unsat"
-    assert receipt["step"] == 1
     assert receipt["reason"] == "no_train_pairs"
-    assert receipt["witness"] is None
+    assert receipt["task"]["task_id"] == "unknown"
+    assert receipt["task"]["train_n"] == 0
+    assert receipt["task"]["test_n"] == 1
 
 
 def test_receipt_includes_params():
