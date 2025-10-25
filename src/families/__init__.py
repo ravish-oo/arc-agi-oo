@@ -20,5 +20,6 @@ from src.families.col_permutation import ColPermutationFamily
 from src.families.sort_rows import SortRowsLexFamily
 from src.families.sort_cols import SortColsLexFamily
 from src.families.mirror_complete import MirrorCompleteFamily
+from src.families.copy_move import CopyMoveAllComponentsFamily
 
-__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily", "ParityTileFamily", "BlockPermutationFamily", "BlockSubstitutionFamily", "RowPermutationFamily", "ColPermutationFamily", "SortRowsLexFamily", "SortColsLexFamily", "MirrorCompleteFamily"]
+__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily", "ParityTileFamily", "BlockPermutationFamily", "BlockSubstitutionFamily", "RowPermutationFamily", "ColPermutationFamily", "SortRowsLexFamily", "SortColsLexFamily", "MirrorCompleteFamily", "CopyMoveAllComponentsFamily"]

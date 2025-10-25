@@ -242,7 +242,7 @@ Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global famili
 * **P2-12 — ColPermutation (column reordering)** ✅ COMPLETE 
 * **P2-13 — SortRowsLex (lexicographic row sort)** ✅ COMPLETE
 * **P2-14 — SortColsLex (lexicographic column sort)** ✅ COMPLETE
-* **P2-15 — MirrorComplete (H/V/Diag symmetry completion)**
+* **P2-15 — MirrorComplete (H/V/Diag symmetry completion)** ✅ COMPLETE
 * **P2-16 — CopyMoveAllComponents ((Δr,Δc) per color)**
 
 These 16 are the locked global P menu (spec; families list), and Phase-2 implements each as an independent, fully tested module before Step-1 uses them.  
