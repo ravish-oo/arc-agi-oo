@@ -241,3 +241,155 @@ def canonical_grid(g: list[list[int]]) -> list[list[int]]:
     best = min(candidates, key=lambda x: (x[0], all_isometries().index(x[1])))
 
     return best[2]  # Return the grid
+
+
+def ofa_normalize_patch_colors(p: list[list[int]]) -> list[list[int]]:
+    """
+    Remap colors in patch p by order-of-first-appearance (OFA) in row-major scan.
+
+    Scans the patch in row-major order (left→right, top→bottom).
+    First distinct color seen maps to 0, second to 1, etc.
+    Only uses information from p (patch-local; no global palette).
+
+    Args:
+        p: Patch as list of lists of integers
+
+    Returns:
+        New patch with colors remapped to {0..k-1} for k distinct colors
+
+    Examples:
+        - [] → []
+        - [[5]] → [[0]]
+        - [[7,3,7,5]] → [[0,1,0,2]] (7→0, 3→1, 5→2)
+        - [[2],[5],[2]] → [[0],[1],[0]] (2→0, 5→1)
+
+    Invariants:
+        - Locality: OFA depends only on p (never global grid)
+        - Purity: input p is never mutated
+        - Determinism: same p → same remapped patch
+        - Compact palette: output uses {0..k-1} for k distinct input colors
+
+    Raises:
+        ValueError: If p is ragged (rows have different lengths)
+    """
+    if not p:
+        return []
+
+    # Validate rectangularity
+    cols = len(p[0])
+    for row in p:
+        if len(row) != cols:
+            raise ValueError("Patch must be rectangular (all rows same length)")
+
+    # Build color remapping in order of first appearance (row-major scan)
+    remap = {}
+    next_color = 0
+
+    out = []
+    for row in p:
+        new_row = []
+        for val in row:
+            if val not in remap:
+                remap[val] = next_color
+                next_color += 1
+            new_row.append(remap[val])
+        out.append(new_row)
+
+    return out
+
+
+def canonical_patch_key(p: list[list[int]]) -> tuple[int, int, tuple[int, ...]]:
+    """
+    Return comparison key for patch p: (rows, cols, ofa_values_flat).
+
+    Computes OFA-normalized version, flattens in row-major order,
+    and returns (rows, cols, values_tuple) for lexicographic comparison.
+
+    Args:
+        p: Patch as list of lists of integers
+
+    Returns:
+        Tuple of (rows, cols, values_tuple)
+
+    Examples:
+        - [] → (0, 0, ())
+        - [[5]] → (1, 1, (0,)) — OFA maps 5→0
+        - [[7,3,7,5]] → (1, 4, (0,1,0,2))
+
+    Invariants:
+        - Stable ordering: lexicographic on tuple
+        - Purity: input p never mutated
+        - Determinism: same p → same key
+        - OFA locality: key uses only patch-local OFA (not global palette)
+
+    Raises:
+        ValueError: If p is ragged
+    """
+    if not p:
+        return (0, 0, ())
+
+    # Apply OFA normalization
+    p_ofa = ofa_normalize_patch_colors(p)
+
+    # Get shape
+    rows = len(p_ofa)
+    cols = len(p_ofa[0])
+
+    # Flatten in row-major order
+    values = []
+    for row in p_ofa:
+        for val in row:
+            values.append(val)
+
+    return (rows, cols, tuple(values))
+
+
+def canonical_d8_patch(p: list[list[int]]) -> list[list[int]]:
+    """
+    Return D8 transform of p with minimal canonical_patch_key (OFA-based).
+
+    Algorithm:
+        1. Apply all 8 isometries from all_isometries() to p
+        2. For each σ: compute p_σ = apply_isometry(p, σ)
+        3. For each p_σ: compute key = canonical_patch_key(p_σ)
+        4. Find σ with minimal key (lexicographic min)
+        5. If multiple σ tie: choose earliest σ by all_isometries() order
+        6. Return ofa_normalize_patch_colors(apply_isometry(p, chosen_σ))
+
+    Args:
+        p: Patch to canonicalize
+
+    Returns:
+        OFA-normalized D8 transform with minimal canonical_patch_key
+
+    Examples:
+        - [] → []
+        - [[5]] → [[0]] (all D8 transforms equal; OFA maps to 0)
+        - [[1,1],[1,1]] → [[0,0],[0,0]]
+
+    Invariants:
+        - Π² on patches: canonical_d8_patch(canonical_d8_patch(p)) == canonical_d8_patch(p)
+        - Purity: input p never mutated
+        - Determinism: same p → same output patch
+        - Tie-break determinism: stable σ ordering ensures unique choice
+        - Minimality: result has lexicographically minimal OFA-based key among all D8 transforms
+
+    Raises:
+        ValueError: If p is ragged
+    """
+    if not p:
+        return []
+
+    # Collect all D8 transforms with their OFA-based keys
+    candidates = []
+    for sigma in all_isometries():
+        p_sigma = apply_isometry(p, sigma)
+        key = canonical_patch_key(p_sigma)
+        candidates.append((key, sigma, p_sigma))
+
+    # Find minimum by (key, sigma_index) for deterministic tie-breaking
+    # If keys are equal, earlier sigma in all_isometries() order wins
+    best = min(candidates, key=lambda x: (x[0], all_isometries().index(x[1])))
+
+    # Return OFA-normalized version of the chosen transform
+    return ofa_normalize_patch_colors(best[2])
