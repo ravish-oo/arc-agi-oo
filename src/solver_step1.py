@@ -248,3 +248,128 @@ def solve_step1(task: dict) -> dict:
         "predictions": None,
         "receipt": generate_receipt_unsat("no_family_matched", task_meta)
     }
+
+
+def _cli_main(argv: list[str] | None = None) -> int:
+    """
+    CLI entry point for single-task execution.
+
+    Algorithm:
+        1. Parse args: --task <path>, --task-id <id>, [--print-receipt]
+        2. Load JSON from <path> (exit 2 on file/parse error)
+        3. Extract task[<id>] (exit 3 if missing)
+        4. Validate task has "train" and "test" keys (exit 4 if malformed)
+        5. Call solve_step1(task) with task["id"] = <id>
+        6. Print JSON to stdout:
+           - Keys: "task_id", "predictions", ["receipt"] (if --print-receipt)
+           - Sorted keys, no trailing whitespace
+        7. Return 0 on success
+
+    Args:
+        argv: Command-line arguments (defaults to sys.argv[1:] if None)
+              Example: ["--task", "data.json", "--task-id", "abc123", "--print-receipt"]
+
+    Returns:
+        Exit code:
+            0: Success (task solved, JSON printed)
+            2: File not found or JSON parse error
+            3: Task ID not found in dataset
+            4: Malformed task (missing "train" or "test")
+
+    Output format (stdout):
+        Without --print-receipt:
+        {"predictions":[[...]],"task_id":"abc123"}
+
+        With --print-receipt:
+        {"predictions":[[...]],"receipt":{...},"task_id":"abc123"}
+
+    Edge cases:
+        - Missing --task or --task-id: print usage to stderr, exit 2
+        - Empty task dataset {}: exit 3 (no tasks)
+        - Task with empty train/test: solve_step1 returns UNSAT, predictions=None
+        - Predictions=None: omit "predictions" key (or include as null)
+
+    Semantics:
+        - Deterministic: same inputs → same outputs (sorted keys)
+        - Pure I/O: read file, print once, exit
+        - No side effects: no logs, no timestamps, no env access
+        - No mutations: task dict is read-only
+
+    Purity:
+        - Read-only on argv and loaded data
+        - Stdout/stderr writes only (no file writes)
+    """
+    import argparse
+    import json
+    import sys
+
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        description="Run Step-1 solver on single ARC task",
+        add_help=True
+    )
+    parser.add_argument("--task", required=True, help="Path to JSON dataset")
+    parser.add_argument("--task-id", required=True, help="Task ID to solve")
+    parser.add_argument("--print-receipt", action="store_true",
+                       help="Include receipt in output")
+
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        # argparse calls sys.exit on error or --help
+        return e.code if e.code else 0
+
+    task_path = args.task
+    task_id = args.task_id
+    print_receipt = args.print_receipt
+
+    # Load JSON dataset
+    try:
+        with open(task_path, 'r') as f:
+            dataset = json.load(f)
+    except FileNotFoundError:
+        print(json.dumps({"error": "file_not_found"}), file=sys.stderr)
+        return 2
+    except json.JSONDecodeError:
+        print(json.dumps({"error": "json_parse_error"}), file=sys.stderr)
+        return 2
+
+    # Extract task by ID
+    if task_id not in dataset:
+        print(json.dumps({"error": "task_id_not_found"}), file=sys.stderr)
+        return 3
+
+    task = dataset[task_id]
+
+    # Add ID to task for receipts
+    task["id"] = task_id
+
+    # Validate task structure (minimal check - solve_step1 does full validation)
+    if "train" not in task or "test" not in task:
+        print(json.dumps({"error": "malformed_task"}), file=sys.stderr)
+        return 4
+
+    # Call solve_step1
+    result = solve_step1(task)
+
+    # Build output dict
+    output = {"task_id": task_id}
+
+    # Include predictions (even if None)
+    if result["predictions"] is not None:
+        output["predictions"] = result["predictions"]
+
+    # Include receipt if requested
+    if print_receipt:
+        output["receipt"] = result["receipt"]
+
+    # Print with sorted keys, compact format (no trailing whitespace)
+    print(json.dumps(output, sort_keys=True, separators=(',', ':')))
+
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    exit_code = _cli_main()
+    sys.exit(exit_code)
