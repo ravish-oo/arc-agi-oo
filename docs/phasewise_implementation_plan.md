@@ -235,7 +235,7 @@ Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global famili
 * **P2-05 — BlockDown (center/majority/min/max/first_nonzero)** ✅ COMPLETE 
 * **P2-06 — NPSDown (band aggregation over change boundaries)** ✅ COMPLETE 
 * **P2-07 — NPSUp (band replication maps learned from train)** ✅ COMPLETE 
-* **P2-08 — ParityTile (tile with h/v/hv parity flips)**
+* **P2-08 — ParityTile (tile with h/v/hv parity flips)** ✅ COMPLETE 
 * **P2-09 — BlockPermutation (tile reorder)**
 * **P2-10 — BlockSubstitution (per-color k×k glyph expansion)**
 * **P2-11 — RowPermutation (row reordering)**
