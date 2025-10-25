@@ -8,5 +8,6 @@ Each family tries to find parameters that exactly reproduce ALL train pairs.
 from src.families.isometry import IsometryFamily
 from src.families.color_map import ColorMapFamily
 from src.families.iso_color_map import IsoColorMapFamily
+from src.families.pixel_replicate import PixelReplicateFamily
 
-__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily"]
+__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily"]
