@@ -224,31 +224,25 @@ Source-of-truth specifications
 
 ### `/docs/` (implementation guides)
 - `context_index.md` (this file) — Repository navigation map
-- `phasewise_implementation_plan.md` — 12-phase implementation roadmap with checkboxes (see detailed section below)
-- `kaggle_submission_readiness.md` — Kaggle submission requirements and wrapper strategy
-- `arc-agi-kaggle-docs.md` — Competition rules and dataset description
+- `phasewise_implementation_plan.md` — 12-phase implementation roadmap with checkboxes
+- `architecture.md` — Folder structure and module details
+- `kaggle_submission_readiness.md` — Kaggle submission requirements
+- `arc-agi-kaggle-docs.md` — Competition rules
 
----
+### `/docs/context-packs/`
+- Phase-specific implementation briefs (P1-01 through P1-06 complete; more added per phase)
 
-## Future Sections (To Be Added)
+### `/src/`
+Phase 1 Foundation modules (for APIs and usage, see architecture.md):
+- `utils.py` — Grid primitives, D8 transformations (dims, transpose, rotations, flips)
+- `canonicalization.py` — D8 isometries, Π canonical operator, OFA patch normalization
+- `components.py` — 8-connected components, bounding boxes, NPS boundary detection
 
-### `/src/` (when created)
-Implementation modules:
-- Canonicalization (Π)
-- Global families (P)
-- Signature builders (Φ)
-- Action inference (A)
-- Solver driver
-- Receipt generation
+### `/tests/`
+Phase 1 test suites (218 tests total; see architecture.md for breakdown)
 
-### `/tests/` (when created)
-Validation tests per primary-anchor:232-238:
-- Π idempotence tests
-- Family fit tests
-- Φ stability tests
-- GLUE stitching tests
-- LUT conflict tests
-- Determinism tests
+### `/reviews/`
+Phase 1 mathematical correctness verification (P1-01 through P1-06, all PASS)
 
 ---
 
@@ -273,12 +267,13 @@ Validation tests per primary-anchor:232-238:
 | **Find critical complexity zones** | **This file → phasewise_implementation_plan.md section** |
 | **Estimate code size for a phase** | **This file → phasewise_implementation_plan.md section** |
 | **Create context pack for agent** | **phasewise_implementation_plan.md (specific phase)** |
+| **See folder structure & Phase 1 details** | **architecture.md** |
 | Understand Kaggle submission requirements | submission_readiness.md |
 | Know how to format submission.json | submission_readiness.md "Output Format" |
 | Handle 2-attempt requirement | submission_readiness.md "Two-Attempt Challenge" |
 | Deal with UNSAT tasks in submission | submission_readiness.md "UNSAT Handling" |
 | Resolve conflicts/ambiguities | This file → "Resolved Decisions" or fundamental_decisions.md |
-| Check repo structure | This file → "Repository Structure" section |
+| Check repo structure | This file → "Repository Structure" section or architecture.md |
 
 ---
 

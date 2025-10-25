@@ -86,7 +86,7 @@ python measure_coverage.py data/arc-agi_training_challenges.json
 
 ## Implementation Phases
 
-### Phase 1: Foundation (No Dependencies)
+### Phase 1: Foundation (No Dependencies) ✅ COMPLETE
 
 **Duration:** 2 days
 **Deliverable:** Base utilities, canonicalization, component detection
@@ -139,7 +139,7 @@ Full Phase-1 WO lineup (titles only), each ≤500-LOC and dependency-free beyond
 * **P1-03 — Π: Lexicographic Canonical Grid over D8 (canonical_grid) + Π² tests** ✅ COMPLETE
 * **P1-04 — OFA Patch Recolor + D8 Patch Canonical (ofa_normalize_patch_colors, canonical_d8_patch) + Π² on patches** ✅ COMPLETE
 * **P1-05 — 8-Connected Components by Color + bbox (deterministic IDs, tie-breaks)** ✅ COMPLETE
-* **P1-06 — NPS Boundary Bands (boundaries_by_any_change) with row/col suites**
+* **P1-06 — NPS Boundary Bands (boundaries_by_any_change) with row/col suites** ✅ COMPLETE
 
 
 ---
@@ -224,6 +224,28 @@ pytest tests/test_families/  # All 16 families pass
 - See implementation_plan.md lines 127-638 for pseudocode
 - Test FY acceptance: `all(deep_eq(apply(X), Y) for X,Y in trains)`
 - Use spec.md lines 19-27 for family definitions
+
+#### Implementation WOs
+Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global families:
+
+* **P2-01 — Isometry (D8/transpose)**
+* **P2-02 — ColorMap (per-color LUT)**
+* **P2-03 — IsoColorMap (isometry + per-color LUT)**
+* **P2-04 — PixelReplicate (uniform upsampling kH×kW)**
+* **P2-05 — BlockDown (center/majority/min/max/first_nonzero)**
+* **P2-06 — NPSDown (band aggregation over change boundaries)**
+* **P2-07 — NPSUp (band replication maps learned from train)**
+* **P2-08 — ParityTile (tile with h/v/hv parity flips)**
+* **P2-09 — BlockPermutation (tile reorder)**
+* **P2-10 — BlockSubstitution (per-color k×k glyph expansion)**
+* **P2-11 — RowPermutation (row reordering)**
+* **P2-12 — ColPermutation (column reordering)**
+* **P2-13 — SortRowsLex (lexicographic row sort)**
+* **P2-14 — SortColsLex (lexicographic column sort)**
+* **P2-15 — MirrorComplete (H/V/Diag symmetry completion)**
+* **P2-16 — CopyMoveAllComponents ((Δr,Δc) per color)**
+
+These 16 are the locked global P menu (spec; families list), and Phase-2 implements each as an independent, fully tested module before Step-1 uses them.  
 
 ---
 
