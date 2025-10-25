@@ -232,7 +232,7 @@ Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global famili
 * **P2-02 — ColorMap (per-color LUT)** ✅ COMPLETE 
 * **P2-03 — IsoColorMap (isometry + per-color LUT)** ✅ COMPLETE 
 * **P2-04 — PixelReplicate (uniform upsampling kH×kW)** ✅ COMPLETE 
-* **P2-05 — BlockDown (center/majority/min/max/first_nonzero)**
+* **P2-05 — BlockDown (center/majority/min/max/first_nonzero)** ✅ COMPLETE 
 * **P2-06 — NPSDown (band aggregation over change boundaries)**
 * **P2-07 — NPSUp (band replication maps learned from train)**
 * **P2-08 — ParityTile (tile with h/v/hv parity flips)**

@@ -357,3 +357,62 @@ def bands_from_boundaries(n: int, boundaries: list[int]) -> list[tuple[int, int]
     bands.append((prev, n - 1))
 
     return bands
+
+
+def bands_from_boundaries(boundaries: list[int], axis_length: int) -> list[int]:
+    """
+    Convert boundary list to band index array.
+
+    Args:
+        boundaries: sorted list of boundary positions [b0, b1, ..., bn] where b0=0, bn=axis_length
+        axis_length: total length of axis (H for rows, W for cols)
+
+    Returns:
+        Array of length axis_length where each position i maps to its band index
+        Band j spans [boundaries[j], boundaries[j+1])
+
+    Example:
+        boundaries = [0, 2, 5, 8], axis_length = 8
+        Returns: [0, 0, 1, 1, 1, 2, 2, 2]
+                  |--band 0--|--band 1--|--band 2--|
+
+    Algorithm:
+        1. Create array of length axis_length initialized to 0
+        2. For each band j in range(len(boundaries)-1):
+            a. For each position i in range(boundaries[j], boundaries[j+1]):
+                - array[i] = j
+        3. Return array
+
+    Edge cases:
+        - Single band [0, axis_length]: all positions → band 0
+        - Empty axis_length=0: return []
+        - boundaries = [0, 1, 2, ..., axis_length]: each position is its own band
+
+    Semantics:
+        - boundaries[0] must be 0
+        - boundaries[-1] must be axis_length
+        - boundaries must be strictly increasing
+        - No validation performed (caller ensures correctness)
+
+    Purity:
+        - Never mutates boundaries
+        - Returns new array
+
+    Determinism:
+        - Same (boundaries, axis_length) → same output array
+        - Iteration order is stable (range())
+    """
+    if axis_length == 0:
+        return []
+
+    # Create result array
+    result = [0] * axis_length
+
+    # Assign band indices
+    for band_idx in range(len(boundaries) - 1):
+        start = boundaries[band_idx]
+        end = boundaries[band_idx + 1]
+        for pos in range(start, end):
+            result[pos] = band_idx
+
+    return result
