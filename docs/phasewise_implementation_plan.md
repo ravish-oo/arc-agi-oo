@@ -229,7 +229,7 @@ pytest tests/test_families/  # All 16 families pass
 Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global families:
 
 * **P2-01 — Isometry (D8/transpose)** ✅ COMPLETE 
-* **P2-02 — ColorMap (per-color LUT)**
+* **P2-02 — ColorMap (per-color LUT)** ✅ COMPLETE 
 * **P2-03 — IsoColorMap (isometry + per-color LUT)**
 * **P2-04 — PixelReplicate (uniform upsampling kH×kW)**
 * **P2-05 — BlockDown (center/majority/min/max/first_nonzero)**
