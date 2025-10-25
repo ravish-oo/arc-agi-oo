@@ -1,0 +1,236 @@
+"""
+Step-1 Solver for ARC AGI Pure Math Solver.
+
+Step 1 of the 3-step algorithm:
+    1. Try 16 global P families in fixed order (this module)
+    2. Try P + Φ/GLUE compositional mode (Step 2, Phase 7)
+    3. Try LUT local fallback (Step 3, Phase 9)
+
+This module implements Step 1: Global exact transformations only.
+
+Algorithm:
+    - Loop through 16 global families in deterministic order
+    - For each family: fit(trains) → verify FY → apply(tests)
+    - Selection strategy: FIRST-PASS (not MDL; that's Step 2)
+    - Return first family that passes FY on ALL trains
+
+Critical constraints:
+    - FY exactness: deep_eq() on ALL training pairs (bit-for-bit)
+    - First-pass: Return FIRST family that succeeds (no MDL)
+    - Determinism: Fixed iteration order, same task → same result
+    - Receipts: Every PASS/UNSAT gets proof-of-work dict
+    - Purity: No mutations to task or grids
+
+Expected coverage: 25-30% baseline on ARC training set.
+"""
+
+from src.utils import deep_eq
+
+# Import all 16 Phase-2 families in deterministic order
+from src.families.isometry import IsometryFamily
+from src.families.color_map import ColorMapFamily
+from src.families.iso_color_map import IsoColorMapFamily
+from src.families.pixel_replicate import PixelReplicateFamily
+from src.families.block_down import BlockDownFamily
+from src.families.nps_down import NPSDownFamily
+from src.families.nps_up import NPSUpFamily
+from src.families.parity_tile import ParityTileFamily
+from src.families.block_permutation import BlockPermutationFamily
+from src.families.block_substitution import BlockSubstitutionFamily
+from src.families.row_permutation import RowPermutationFamily
+from src.families.col_permutation import ColPermutationFamily
+from src.families.sort_rows import SortRowsLexFamily
+from src.families.sort_cols import SortColsLexFamily
+from src.families.mirror_complete import MirrorCompleteFamily
+from src.families.copy_move import CopyMoveAllComponentsFamily
+
+from src.receipts import generate_receipt_global, generate_receipt_unsat
+
+
+# Fixed order (matches spec.md lines 26-33)
+GLOBAL_FAMILIES = [
+    IsometryFamily,
+    ColorMapFamily,
+    IsoColorMapFamily,
+    PixelReplicateFamily,
+    BlockDownFamily,
+    NPSDownFamily,
+    NPSUpFamily,
+    ParityTileFamily,
+    BlockPermutationFamily,
+    BlockSubstitutionFamily,
+    RowPermutationFamily,
+    ColPermutationFamily,
+    SortRowsLexFamily,
+    SortColsLexFamily,
+    MirrorCompleteFamily,
+    CopyMoveAllComponentsFamily
+]
+
+
+def _try_family(family_class, train_pairs: list[dict]) -> tuple[object | None, bool]:
+    """
+    Helper: Instantiate family, call fit(), verify FY on all trains.
+
+    Algorithm:
+        1. Instantiate family: instance = family_class()
+        2. Call instance.fit(train_pairs)
+        3. If fit() returns False: return (None, False)
+        4. Verify FY: For each pair in train_pairs:
+            - Check deep_eq(instance.apply(X), Y)
+            - If ANY mismatch: return (None, False)
+        5. If all verified: return (instance, True)
+
+    Args:
+        family_class: Class object (e.g., IsometryFamily)
+        train_pairs: list of {"input": grid, "output": grid}
+
+    Returns:
+        tuple of (family_instance | None, success: bool)
+        - (instance, True) if FY satisfied on ALL trains
+        - (None, False) otherwise
+
+    Semantics:
+        - Catches exceptions from fit() or apply() → (None, False)
+        - Verification uses deep_eq() from utils.py
+        - FY strictness: Single pixel diff → fail
+
+    Edge cases:
+        - fit() raises exception: catch and return (None, False)
+        - apply() raises exception: catch and return (None, False)
+        - Empty train_pairs: return (None, False)
+
+    Determinism:
+        - Same (family_class, train_pairs) → same result
+
+    Purity:
+        - Read-only on train_pairs
+    """
+    # Edge case: empty train pairs
+    if not train_pairs:
+        return (None, False)
+
+    try:
+        # Instantiate family
+        instance = family_class()
+
+        # Call fit()
+        fit_result = instance.fit(train_pairs)
+        if not fit_result:
+            return (None, False)
+
+        # Verify FY on ALL trains (critical: fit() may be imperfect)
+        for pair in train_pairs:
+            X = pair["input"]
+            Y = pair["output"]
+
+            # Apply family to input
+            Y_pred = instance.apply(X)
+
+            # Check bit-for-bit equality
+            if not deep_eq(Y_pred, Y):
+                return (None, False)
+
+        # All trains verified → success
+        return (instance, True)
+
+    except Exception:
+        # Any error during fit/apply → reject family
+        # This includes: RuntimeError, KeyError, IndexError, etc.
+        return (None, False)
+
+
+def solve_step1(task: dict) -> dict:
+    """
+    Step-1 solver: Try 16 global P families in fixed order (first-pass).
+
+    Algorithm:
+        1. Extract train_pairs from task["train"] as list of dicts
+        2. Extract test_inputs from task["test"] as list of dicts
+        3. For each family in GLOBAL_FAMILIES (fixed order):
+            a. Call _try_family(family_class, train_pairs)
+            b. If family returns (instance, True):
+                - Apply instance.apply(X) to all test inputs
+                - Generate predictions list
+                - Return PASS result with receipt
+        4. If NO family succeeds, return UNSAT result with receipt
+
+    Args:
+        task: dict with keys "train" (list of {"input": grid, "output": grid})
+                           and "test" (list of {"input": grid})
+
+    Returns:
+        dict with keys:
+            - "status": "PASS" | "UNSAT"
+            - "predictions": list[grid] (if PASS, else None)
+            - "receipt": dict (see generate_receipt_global/unsat)
+
+    Semantics:
+        - FIRST-PASS: Returns first family that passes FY (not best by MDL)
+        - FY exactness: Family must match ALL trains bit-for-bit
+        - Determinism: Same task → same result (fixed family order)
+        - No mutations: task dict is never modified
+        - Empty trains/tests: Return UNSAT with reason
+
+    Edge cases:
+        - Empty train: Return UNSAT ("no_train_pairs")
+        - Empty test: Return PASS with empty predictions list
+        - Malformed task (missing "train"/"test"): Return UNSAT
+
+    Determinism/Purity:
+        - No randomness; iteration order is deterministic
+        - No mutations to task or grids
+        - Same inputs → same outputs
+    """
+    # Edge case: malformed task
+    if "train" not in task or "test" not in task:
+        return {
+            "status": "UNSAT",
+            "predictions": None,
+            "receipt": generate_receipt_unsat("malformed_task")
+        }
+
+    train_pairs = task["train"]
+    test_examples = task["test"]
+
+    # Edge case: empty train
+    if not train_pairs:
+        return {
+            "status": "UNSAT",
+            "predictions": None,
+            "receipt": generate_receipt_unsat("no_train_pairs")
+        }
+
+    # Extract test inputs
+    test_inputs = [ex["input"] for ex in test_examples]
+
+    # Try each family in fixed order (first-pass)
+    for family_class in GLOBAL_FAMILIES:
+        instance, success = _try_family(family_class, train_pairs)
+
+        if success:
+            # Apply to all test inputs
+            predictions = []
+            try:
+                for X in test_inputs:
+                    Y_pred = instance.apply(X)
+                    predictions.append(Y_pred)
+
+                # Success: return PASS result
+                return {
+                    "status": "PASS",
+                    "predictions": predictions,
+                    "receipt": generate_receipt_global(instance, task)
+                }
+
+            except Exception:
+                # If apply() fails on test (shouldn't happen after FY verification)
+                # Skip this family and try next one
+                continue
+
+    # No family matched
+    return {
+        "status": "UNSAT",
+        "predictions": None,
+        "receipt": generate_receipt_unsat("no_family_matched")
+    }

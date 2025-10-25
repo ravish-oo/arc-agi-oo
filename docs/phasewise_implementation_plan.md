@@ -312,7 +312,7 @@ python tests/measure_coverage.py data/arc-agi_training_challenges.json
 #### Implementation WOs
 Phase-3 WO lineup (titles only), each ≤500-LOC and dependency-clean:
 
-* **P3-01 — Step-1 Solver Core (loop 16 families, FY check, first-pass select)**
+* **P3-01 — Step-1 Solver Core (loop 16 families, FY check, first-pass select)** ✅ COMPLETE
 * **P3-02 — Receipts: Global PASS/UNSAT (generate_receipt_global / generate_receipt_unsat)**
 * **P3-03 — CLI Runner for Step-1 (single-task exec, args: task file, task-id)**
 * **P3-04 — Coverage Meter (measure_coverage.py: run all trains, family breakdown, %)**
