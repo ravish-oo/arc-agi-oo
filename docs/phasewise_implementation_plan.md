@@ -137,7 +137,7 @@ Full Phase-1 WO lineup (titles only), each ≤500-LOC and dependency-free beyond
 * **P1-01 — Core Grid Utilities (dims, copy, deep_eq, transpose, rot90/180/270, flip_h/v)** ✅ COMPLETE
 * **P1-02 — D8 Isometries Registry (ISOMETRIES) and shape-safety contracts** ✅ COMPLETE
 * **P1-03 — Π: Lexicographic Canonical Grid over D8 (canonical_grid) + Π² tests** ✅ COMPLETE
-* **P1-04 — OFA Patch Recolor + D8 Patch Canonical (ofa_normalize_patch_colors, canonical_d8_patch) + Π² on patches**
+* **P1-04 — OFA Patch Recolor + D8 Patch Canonical (ofa_normalize_patch_colors, canonical_d8_patch) + Π² on patches** ✅ COMPLETE
 * **P1-05 — 8-Connected Components by Color + bbox (deterministic IDs, tie-breaks)**
 * **P1-06 — NPS Boundary Bands (boundaries_by_any_change) with row/col suites**
 
