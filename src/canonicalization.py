@@ -143,3 +143,101 @@ def apply_isometry(g: list[list[int]], name: str) -> list[list[int]]:
         raise KeyError(f"Unknown isometry: {name}. Must be one of {all_isometries()}")
 
     return transforms[name](g)
+
+
+def canonical_key(g: list[list[int]]) -> tuple[int, int, tuple[int, ...]]:
+    """
+    Return lexicographic comparison key for grid g.
+
+    The key is (rows, cols, row_major_values) where row_major_values is
+    a flat tuple of all grid values in row-major order (left-to-right, top-to-bottom).
+
+    Ordering is shape-first (compare rows, then cols), then values.
+
+    Args:
+        g: Grid as list of lists of integers
+
+    Returns:
+        Tuple of (rows, cols, values_tuple)
+
+    Examples:
+        - [] → (0, 0, ())
+        - [[5]] → (1, 1, (5,))
+        - [[1,2],[3,4]] → (2, 2, (1,2,3,4))
+
+    Invariants:
+        - Pure: input g is never mutated
+        - Deterministic: same g → same key
+        - Stable ordering: lexicographic comparison on returned tuple
+
+    Raises:
+        ValueError: If g is ragged (rows have different lengths)
+    """
+    if not g:
+        return (0, 0, ())
+
+    # Validate rectangularity
+    rows = len(g)
+    cols = len(g[0])
+    for row in g:
+        if len(row) != cols:
+            raise ValueError("Grid must be rectangular (all rows same length)")
+
+    # Flatten in row-major order
+    values = []
+    for row in g:
+        for val in row:
+            values.append(val)
+
+    return (rows, cols, tuple(values))
+
+
+def canonical_grid(g: list[list[int]]) -> list[list[int]]:
+    """
+    Return the D8 transform of g with minimal canonical_key.
+
+    This implements the Π (Present) operator: an idempotent canonicalization
+    that selects the lexicographically minimal D8 image.
+
+    Algorithm:
+        1. Apply all 8 isometries in all_isometries() order
+        2. Compute canonical_key for each transform
+        3. Select transform with minimal key (lexicographic min)
+        4. If multiple transforms share minimal key: choose earliest σ in all_isometries() order
+
+    Args:
+        g: Grid to canonicalize
+
+    Returns:
+        Grid with minimal canonical_key among all D8 transforms
+
+    Examples:
+        - [] → []
+        - [[5]] → [[5]] (all D8 transforms equal)
+        - [[1,2],[3,4]] → [[1,2],[3,4]] (id wins)
+
+    Invariants:
+        - Π² = Π: canonical_grid(canonical_grid(g)) == canonical_grid(g) (idempotence)
+        - Pure: input g is never mutated
+        - Pure: output is newly allocated (no row aliasing)
+        - Deterministic: same g → same output grid
+        - Minimality: result has lexicographically minimal key among all D8 transforms
+
+    Raises:
+        ValueError: If g is ragged
+    """
+    if not g:
+        return []
+
+    # Collect all D8 transforms with their keys
+    candidates = []
+    for sigma in all_isometries():
+        g_sigma = apply_isometry(g, sigma)
+        key = canonical_key(g_sigma)
+        candidates.append((key, sigma, g_sigma))
+
+    # Find minimum by (key, sigma_index) for deterministic tie-breaking
+    # If keys are equal, earlier sigma in all_isometries() order wins
+    best = min(candidates, key=lambda x: (x[0], all_isometries().index(x[1])))
+
+    return best[2]  # Return the grid
