@@ -16,5 +16,6 @@ from src.families.parity_tile import ParityTileFamily
 from src.families.block_permutation import BlockPermutationFamily
 from src.families.block_substitution import BlockSubstitutionFamily
 from src.families.row_permutation import RowPermutationFamily
+from src.families.col_permutation import ColPermutationFamily
 
-__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily", "ParityTileFamily", "BlockPermutationFamily", "BlockSubstitutionFamily", "RowPermutationFamily"]
+__all__ = ["IsometryFamily", "ColorMapFamily", "IsoColorMapFamily", "PixelReplicateFamily", "BlockDownFamily", "NPSDownFamily", "NPSUpFamily", "ParityTileFamily", "BlockPermutationFamily", "BlockSubstitutionFamily", "RowPermutationFamily", "ColPermutationFamily"]

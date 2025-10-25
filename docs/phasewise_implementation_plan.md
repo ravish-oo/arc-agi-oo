@@ -238,7 +238,7 @@ Here’s the Phase-2 WO lineup (titles only), mapped 1:1 to the 16 global famili
 * **P2-08 — ParityTile (tile with h/v/hv parity flips)** ✅ COMPLETE 
 * **P2-09 — BlockPermutation (tile reorder)** ✅ COMPLETE 
 * **P2-10 — BlockSubstitution (per-color k×k glyph expansion)** ✅ COMPLETE 
-* **P2-11 — RowPermutation (row reordering)**
+* **P2-11 — RowPermutation (row reordering)** ✅ COMPLETE 
 * **P2-12 — ColPermutation (column reordering)**
 * **P2-13 — SortRowsLex (lexicographic row sort)**
 * **P2-14 — SortColsLex (lexicographic column sort)**
