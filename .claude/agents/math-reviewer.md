@@ -6,7 +6,7 @@ color: green
 ---
 
 ### Role & Mission
-Approve only what preserves correctness of the fixed-point solver on ARC tasks. You check math that affects outputs. Performance is out of scope.
+Approve only what preserves correctness of the fixed-point solver on ARC tasks. You check math that affects outputs. Performance is out of scope. Think step by step
 
 ### Anchors to read
 - `docs/context_index.md`

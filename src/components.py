@@ -200,3 +200,160 @@ def components_by_color(g: list[list[int]]) -> dict[int, list[dict]]:
         result[color] = components
 
     return result
+
+
+def boundaries_by_any_change(g: list[list[int]], axis: str) -> list[int]:
+    """
+    Return sorted boundary indices where adjacent rows or columns differ.
+
+    Non-Periodic Segmentation (NPS): detect content-change boundaries along
+    an axis to partition grid into homogeneous bands.
+
+    Args:
+        g: Rectangular grid (list of lists of integers 0..9)
+        axis: "row" or "col"
+          - "row": compare row i and row i+1; boundary at i if any column differs
+          - "col": compare col j and col j+1; boundary at j if any row differs
+
+    Returns:
+        Strictly increasing list of boundary indices in [0..L-2], where:
+          - For axis="row": L = number of rows; boundaries in range [0..rows-2]
+          - For axis="col": L = number of cols; boundaries in range [0..cols-2]
+        Empty list if no boundaries (all rows/cols identical) or grid too small.
+
+    Raises:
+        ValueError: If grid is ragged (non-rectangular)
+        ValueError: If axis not in {"row", "col"}
+
+    Edge cases:
+        - [] → [] (no boundaries)
+        - Single row [[1,2,3]] with axis="row" → [] (no adjacent rows to compare)
+        - Single col [[1],[2],[3]] with axis="col" → [] (no adjacent cols)
+        - All rows identical → [] (no change boundaries)
+        - Alternating rows → [0, 1, 2, ...] (boundary at every index)
+
+    Semantics:
+        - axis="row": boundary i means "rows i and i+1 differ in at least one column"
+        - axis="col": boundary j means "columns j and j+1 differ in at least one row"
+        - Boundaries partition axis into bands; no boundary means single band
+
+    Invariants:
+        - Pure function (no mutation)
+        - Deterministic (same grid → same boundaries)
+        - Input-only (never depends on target Y)
+        - Result is sorted ascending, unique, within valid range
+    """
+    # Empty grid special case
+    if not g:
+        return []
+
+    # Validate rectangularity and get dimensions
+    rows, cols = dims(g)  # Raises ValueError if ragged
+
+    # Validate axis parameter
+    if axis not in {"row", "col"}:
+        raise ValueError(f'axis must be "row" or "col", got: {axis}')
+
+    boundaries = []
+
+    if axis == "row":
+        # Compare each row i with row i+1
+        for i in range(rows - 1):
+            row_i = g[i]
+            row_i1 = g[i + 1]
+            # Boundary at i if ANY column differs
+            if any(row_i[c] != row_i1[c] for c in range(cols)):
+                boundaries.append(i)
+
+    else:  # axis == "col"
+        # Compare each column j with column j+1
+        for j in range(cols - 1):
+            # Extract columns j and j+1
+            col_j = [g[r][j] for r in range(rows)]
+            col_j1 = [g[r][j + 1] for r in range(rows)]
+            # Boundary at j if ANY row differs
+            if any(col_j[r] != col_j1[r] for r in range(rows)):
+                boundaries.append(j)
+
+    return boundaries  # Already sorted by construction
+
+
+def bands_from_boundaries(n: int, boundaries: list[int]) -> list[tuple[int, int]]:
+    """
+    Convert boundary indices to inclusive (start, end) band tuples.
+
+    Given axis length n and sorted boundary indices, partition [0..n-1]
+    into contiguous bands split at each boundary.
+
+    Args:
+        n: Axis length (rows or cols), must be ≥ 0
+        boundaries: Sorted, unique boundary indices within [0..n-2]
+
+    Returns:
+        List of (start, end) inclusive band tuples partitioning [0..n-1]:
+          - If boundaries = [b0, b1, ..., bk], return:
+            [(0, b0), (b0+1, b1), (b1+1, b2), ..., (bk+1, n-1)]
+          - Empty boundaries → single band [(0, n-1)] if n > 0, else []
+          - n=0 → []
+          - n=1 → [(0, 0)]
+
+    Raises:
+        ValueError: If n < 0
+        ValueError: If boundaries not sorted or contain duplicates
+        ValueError: If any boundary not in [0..n-2]
+
+    Edge cases:
+        - n=0, boundaries=[] → []
+        - n=1, boundaries=[] → [(0, 0)]
+        - n=3, boundaries=[] → [(0, 2)]
+        - n=3, boundaries=[1] → [(0, 1), (2, 2)]
+        - n=5, boundaries=[0, 2, 3] → [(0, 0), (1, 2), (3, 3), (4, 4)]
+        - Consecutive boundaries create single-element bands
+
+    Semantics:
+        - Bands cover [0..n-1] exactly once (no gaps, no overlaps)
+        - start ≤ end always (inclusive on both ends)
+        - Bands are contiguous and in order
+
+    Invariants:
+        - Pure function (no mutation)
+        - Deterministic (same inputs → same bands)
+        - Full coverage: union of bands equals [0..n-1] when n > 0
+        - Disjoint: bands do not overlap
+    """
+    # Validate n
+    if n < 0:
+        raise ValueError(f"n must be non-negative, got: {n}")
+
+    # Empty axis case
+    if n == 0:
+        return []
+
+    # Validate boundaries
+    if boundaries:
+        # Check sorted and unique
+        for i in range(len(boundaries) - 1):
+            if boundaries[i] >= boundaries[i + 1]:
+                raise ValueError(f"boundaries must be strictly increasing (sorted, unique), got: {boundaries}")
+
+        # Check range [0..n-2]
+        if boundaries[0] < 0:
+            raise ValueError(f"boundaries must be in [0..{n-2}], got: {boundaries}")
+        if boundaries[-1] > n - 2:
+            raise ValueError(f"boundaries must be in [0..{n-2}], got: {boundaries}")
+
+    # No boundaries → single band [0..n-1]
+    if not boundaries:
+        return [(0, n - 1)]
+
+    # Build bands from boundaries
+    bands = []
+    prev = 0
+    for b in boundaries:
+        bands.append((prev, b))
+        prev = b + 1
+
+    # Final band from last boundary+1 to n-1
+    bands.append((prev, n - 1))
+
+    return bands

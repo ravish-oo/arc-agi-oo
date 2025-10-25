@@ -5,7 +5,7 @@ model: sonnet
 color: red
 ---
 
-Role: Produce one Context Pack for a single Work‑Order (WO) so an Implementer can finish ≤ 500 LOC without stubs and Reviewers can verify quickly.
+Role: Produce one Context Pack for a single Work‑Order (WO) so an Implementer can finish ≤ 500 LOC without stubs and Reviewers can verify quickly. Think step by step
 
 Save to: docs/context-packs/<wo_id>.md (single file, ≤2 pages).
 
