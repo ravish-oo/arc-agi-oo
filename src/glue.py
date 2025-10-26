@@ -6,7 +6,7 @@ All functions are pure (no mutation) and deterministic.
 """
 
 from collections import defaultdict
-from src.utils import dims, copy_grid
+from src.utils import dims, copy_grid, deep_eq
 from src.signature_builders import phi_signature_tables
 
 
@@ -446,3 +446,73 @@ def stitch_from_classes(
                 raise ValueError(f"Unknown action: {action_name}")
 
     return outputs
+
+
+def verify_stitched_equality(
+    items: list[dict],
+    classes: dict[int, list[tuple[int, int, int]]],
+    actions_by_cid: dict[int, tuple[str, object | None]],
+) -> bool:
+    """
+    Verify GLUE exactness (FY) by stitching per-class actions and comparing to targets.
+
+    Returns True iff stitch_from_classes(...) reproduces every Y_i exactly (bit-for-bit);
+    otherwise False. This is a pure verification wrapper—no solver logic, no MDL.
+
+    This function embodies the GLUE theorem (T3): when class supports are disjoint,
+    stitching from a frozen base with per-class actions yields exact equality to
+    one-shot outputs. We verify this by comparing stitched results to ground truth Y.
+
+    Args:
+        items: Training pair dicts from build_phi_partition:
+            [{"Xp": grid, "Y": grid, "feats": dict, "residual": grid}, ...]
+        classes: Class partitions (from build_phi_partition):
+            {class_id: [(train_idx, row, col), ...], ...}
+        actions_by_cid: Actions per class (from infer_action_for_class):
+            {class_id: (action_name, param), ...}
+
+    Returns:
+        True: stitched outputs match all targets Y_i exactly
+        False: at least one train fails equality check
+
+    Raises:
+        ValueError: Propagated from stitch_from_classes if:
+            - Missing action for a class_id
+            - Seam check enabled and overlap detected
+            - Invalid grid (ragged rows)
+
+    Postconditions:
+        - FY equality: returns True ONLY if deep_eq(Out_i, Y_i) for ALL i
+        - Purity: items unchanged
+        - Determinism: same inputs → same boolean result
+
+    Edge cases:
+        - classes == {} → returns True iff every Xp_i == Y_i already
+        - Some class has no coords for a train i (skipped) → still can be True
+        - Single pixel differs in Y_i → returns False
+
+    Examples:
+        >>> # All Xp == Y (no residuals, no classes)
+        >>> items = [{"Xp": [[1,2]], "Y": [[1,2]], "feats": {}, "residual": [[None,None]]}]
+        >>> verify_stitched_equality(items, {}, {})
+        True
+
+        >>> # Single class, set_color action → exact match
+        >>> items = [{"Xp": [[0,0]], "Y": [[5,5]], "feats": {}, "residual": [[5,5]]}]
+        >>> classes = {0: [(0,0,0), (0,0,1)]}
+        >>> actions = {0: ("set_color", 5)}
+        >>> verify_stitched_equality(items, classes, actions)
+        True
+
+        >>> # Single pixel differs → False
+        >>> items = [{"Xp": [[0,0]], "Y": [[5,4]], "feats": {}, "residual": [[5,4]]}]
+        >>> classes = {0: [(0,0,0), (0,0,1)]}
+        >>> actions = {0: ("set_color", 5)}
+        >>> verify_stitched_equality(items, classes, actions)
+        False
+    """
+    # Call stitcher to get outputs (propagates ValueError if invalid inputs)
+    stitched = stitch_from_classes(items, classes, actions_by_cid)
+
+    # Verify ALL trains match targets exactly (FY equality)
+    return all(deep_eq(stitched[i], items[i]["Y"]) for i in range(len(items)))
