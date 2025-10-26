@@ -327,9 +327,16 @@ def _build_signature(
         comp_aspect,
     ]
 
-    # Schema-conditional: is_color (specific color value at pixel)
+    # Schema-conditional: color features (mutually exclusive)
     if schema.use_is_color:
+        # Specific color value (palette-specific)
         sig_parts.append(Xp[r][c])
+    elif schema.use_canon_color_id:
+        # Canonical color ID (enables cross-palette generalization)
+        canon_color_map = feats["local"]["canon_color_map"]
+        raw_color = Xp[r][c]
+        canon_color = canon_color_map.get(raw_color, raw_color)
+        sig_parts.append(canon_color)
 
     # Schema-conditional: patchkey (only ONE of r2/r3/r4 can be True)
     if schema.use_patch_r2:

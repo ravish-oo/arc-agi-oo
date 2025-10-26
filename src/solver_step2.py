@@ -412,24 +412,25 @@ def solve_step2(task: dict) -> dict:
                 Schema(use_is_color=True)             → (1, 0)
                 Schema(use_is_color=True, use_patch_r2=True) → (1, 1) - FINEST
         """
-        is_color_cost = 1 if schema.use_is_color else 0
+        # Color features: either palette-specific (use_is_color) or canonical (use_canon_color_id)
+        color_cost = 1 if (schema.use_is_color or schema.use_canon_color_id) else 0
         patchkey_count = sum([schema.use_patch_r2, schema.use_patch_r3, schema.use_patch_r4])
-        return (is_color_cost, patchkey_count)
+        return (color_cost, patchkey_count)
 
     # Schema lattice for MDL minimality (coarse-to-fine, colorless-first)
-    # Ordering follows ChatGPT Pro's specification: prefer colorless schemas first
-    # Within colorless/colorful: prefer fewer patchkeys
+    # Ordering: prefer canonical color schemas first (cross-palette generalization)
+    # Within each group: prefer fewer patchkeys (coarser → finer)
     SCHEMAS = [
-        # Colorless variants (most coarse, best for palette-permutation tasks)
-        Schema(),                                    # S0_colorless: 6-tuple (spatial only)
-        Schema(use_patch_r2=True),                   # S0_colorless + r2
-        Schema(use_patch_r3=True),                   # S0_colorless + r3
-        Schema(use_patch_r4=True),                   # S0_colorless + r4
-        # Colorful variants (legacy, for color-dependent tasks)
-        Schema(use_is_color=True),                   # S0_colorful: 7-tuple (+ is_color)
-        Schema(use_is_color=True, use_patch_r2=True), # S1_colorful
-        Schema(use_is_color=True, use_patch_r3=True), # S2_colorful
-        Schema(use_is_color=True, use_patch_r4=True), # S3_colorful (FINEST)
+        # Canonical color variants (best for palette-permutation tasks)
+        Schema(use_canon_color_id=True),                                    # S0_canonical: 7-tuple (spatial + canon_color)
+        Schema(use_canon_color_id=True, use_patch_r2=True),                 # S0_canonical + r2
+        Schema(use_canon_color_id=True, use_patch_r3=True),                 # S0_canonical + r3
+        Schema(use_canon_color_id=True, use_patch_r4=True),                 # S0_canonical + r4
+        # Palette-specific color variants (for color-dependent tasks)
+        Schema(use_is_color=True),                                          # S0_colorful: 7-tuple (+ is_color)
+        Schema(use_is_color=True, use_patch_r2=True),                       # S1_colorful
+        Schema(use_is_color=True, use_patch_r3=True),                       # S2_colorful
+        Schema(use_is_color=True, use_patch_r4=True),                       # S3_colorful (FINEST)
     ]
 
     # Collect all passing candidates (all P × all schemas)

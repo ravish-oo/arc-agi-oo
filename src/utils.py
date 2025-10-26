@@ -259,3 +259,86 @@ def flip_v(g: list[list[int]]) -> list[list[int]]:
 
     # Reverse row order
     return [list(row) for row in reversed(g)]
+
+
+def color_interaction_graph(g: list[list[int]]) -> dict[int, int]:
+    """
+    Compute canonical color IDs via Color Interaction Graph (CIG).
+
+    Two colors interact if they appear in adjacent cells (4-connectivity).
+    The CIG is represented as an adjacency set for each color.
+    Colors are assigned canonical IDs 0..k-1 in order of:
+    1. Frequency (most common first)
+    2. Minimum raw color value (tie-breaker for determinism)
+
+    This provides input-only color canonicalization that:
+    - Preserves color separation (different raw colors → different canonical IDs)
+    - Enables cross-palette generalization (similar palettes → similar canonical IDs)
+
+    Args:
+        g: Grid to analyze
+
+    Returns:
+        Mapping from raw color (0-9) to canonical color ID (0..k-1)
+        where k is the number of distinct colors in the grid
+
+    Raises:
+        ValueError: If grid is ragged
+    """
+    if not g:
+        return {}
+
+    rows, cols = dims(g)  # Validates rectangularity
+
+    # Count color frequencies
+    color_freq = {}
+    for r in range(rows):
+        for c in range(cols):
+            color = g[r][c]
+            color_freq[color] = color_freq.get(color, 0) + 1
+
+    # Sort colors by: (frequency descending, raw value ascending)
+    colors_sorted = sorted(
+        color_freq.keys(),
+        key=lambda c: (-color_freq[c], c)
+    )
+
+    # Assign canonical IDs
+    canon_map = {}
+    for canon_id, raw_color in enumerate(colors_sorted):
+        canon_map[raw_color] = canon_id
+
+    return canon_map
+
+
+def apply_color_canon(g: list[list[int]], canon_map: dict[int, int]) -> list[list[int]]:
+    """
+    Apply canonical color mapping to grid.
+
+    Replaces each pixel's raw color with its canonical color ID.
+
+    Args:
+        g: Grid to canonicalize
+        canon_map: Mapping from raw color to canonical color ID
+
+    Returns:
+        New grid with canonical color IDs
+
+    Raises:
+        ValueError: If grid is ragged
+    """
+    if not g:
+        return []
+
+    rows, cols = dims(g)  # Validates rectangularity
+
+    result = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            raw_color = g[r][c]
+            canon_color = canon_map.get(raw_color, raw_color)
+            row.append(canon_color)
+        result.append(row)
+
+    return result

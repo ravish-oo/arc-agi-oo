@@ -41,6 +41,7 @@ from src.canonicalization import (
     apply_isometry,
     all_isometries,
 )
+from src.utils import color_interaction_graph
 from dataclasses import dataclass
 
 
@@ -66,8 +67,9 @@ class Schema:
     use_patch_r3: bool = False         # 7×7 local context
     use_patch_r4: bool = False         # 9×9 local context
 
-    # Absolute color feature (most specific)
-    use_is_color: bool = False         # Specific color value (0-9)
+    # Color features (mutually exclusive - only one should be True)
+    use_is_color: bool = False         # Specific color value (0-9) - palette-specific
+    use_canon_color_id: bool = False   # Canonical color ID (0..k-1) - enables cross-palette generalization
 
 
 def _validate_rectangular(g: list[list[int]]) -> None:
@@ -1399,10 +1401,17 @@ def phi_signature_tables(X: list[list[int]], schema = None) -> dict:
         for color in range(10):
             is_color_dict[color] = is_color_mask(X, color)
             touching_color_dict[color] = touching_color_mask(X, color)
+        canon_color_map = None
+    elif schema.use_canon_color_id:
+        # Canonical color IDs for cross-palette generalization
+        canon_color_map = color_interaction_graph(X)
+        is_color_dict = None
+        touching_color_dict = None
     else:
         # Colorless schemas skip color-specific features
         is_color_dict = None
         touching_color_dict = None
+        canon_color_map = None
 
     # P4-04: Component IDs
     id_grid, meta = component_id_table(X)
@@ -1450,6 +1459,7 @@ def phi_signature_tables(X: list[list[int]], schema = None) -> dict:
         "local": {
             "is_color": is_color_dict,
             "touching_color": touching_color_dict,
+            "canon_color_map": canon_color_map,
         },
         "components": {
             "id_grid": id_grid,
