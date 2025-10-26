@@ -923,6 +923,337 @@ def patchkey_table(g: list[list[int]], r: int) -> list[list[object]]:
     return table
 
 
+# ============================================================================
+# Pair-Invariant Feature Helpers (Bug B2 Fix)
+# ============================================================================
+
+
+def nps_boundary_masks(
+    band_masks: list[list[list[int]]], axis: str
+) -> list[list[int]]:
+    """
+    Compute boundary mask from NPS band masks (pair-invariant).
+
+    A pixel is on a boundary if it's at the edge between two bands.
+    For row bands: boundary is where adjacent rows belong to different bands.
+    For col bands: boundary is where adjacent cols belong to different bands.
+
+    Args:
+        band_masks: List of band masks from row_band_masks or col_band_masks
+        axis: "row" or "col" indicating which axis to check
+
+    Returns:
+        Binary mask: 1 if pixel is on boundary, 0 otherwise
+
+    Examples:
+        >>> # Two row bands: rows 0-1 (band 0), rows 2-3 (band 1)
+        >>> bands = [[[1,1],[1,1],[0,0],[0,0]], [[0,0],[0,0],[1,1],[1,1]]]
+        >>> nps_boundary_masks(bands, "row")
+        [[0, 0], [1, 1], [1, 1], [0, 0]]  # Rows 1 and 2 are on boundary
+    """
+    if not band_masks:
+        return []
+
+    h = len(band_masks[0])
+    w = len(band_masks[0][0]) if band_masks[0] else 0
+
+    if h == 0 or w == 0:
+        return []
+
+    # Create boundary mask
+    boundary = [[0] * w for _ in range(h)]
+
+    if axis == "row":
+        # Check row boundaries (adjacent rows in different bands)
+        for r in range(h):
+            for c in range(w):
+                # Check if row r is at boundary with row r-1 or r+1
+                is_boundary = False
+
+                if r > 0:
+                    # Check if (r, c) and (r-1, c) are in different bands
+                    for band_mask in band_masks:
+                        if band_mask[r][c] != band_mask[r - 1][c]:
+                            is_boundary = True
+                            break
+
+                if r < h - 1 and not is_boundary:
+                    # Check if (r, c) and (r+1, c) are in different bands
+                    for band_mask in band_masks:
+                        if band_mask[r][c] != band_mask[r + 1][c]:
+                            is_boundary = True
+                            break
+
+                boundary[r][c] = 1 if is_boundary else 0
+
+    else:  # axis == "col"
+        # Check col boundaries (adjacent cols in different bands)
+        for r in range(h):
+            for c in range(w):
+                # Check if col c is at boundary with col c-1 or c+1
+                is_boundary = False
+
+                if c > 0:
+                    # Check if (r, c) and (r, c-1) are in different bands
+                    for band_mask in band_masks:
+                        if band_mask[r][c] != band_mask[r][c - 1]:
+                            is_boundary = True
+                            break
+
+                if c < w - 1 and not is_boundary:
+                    # Check if (r, c) and (r, c+1) are in different bands
+                    for band_mask in band_masks:
+                        if band_mask[r][c] != band_mask[r][c + 1]:
+                            is_boundary = True
+                            break
+
+                boundary[r][c] = 1 if is_boundary else 0
+
+    return boundary
+
+
+def nps_offset_bucket_table(
+    band_masks: list[list[list[int]]], axis: str
+) -> list[list[int]]:
+    """
+    Compute normalized offset within band (pair-invariant).
+
+    Returns bucket indicating position within the pixel's band:
+    - 0: Start third of band (0-33%)
+    - 1: Middle third of band (33-66%)
+    - 2: End third of band (66-100%)
+
+    Args:
+        band_masks: List of band masks from row_band_masks or col_band_masks
+        axis: "row" or "col" indicating which axis
+
+    Returns:
+        Grid of bucket values (0, 1, or 2)
+
+    Examples:
+        >>> # Row band spanning rows 0-5 (6 rows)
+        >>> # Row 0-1: bucket 0, rows 2-3: bucket 1, rows 4-5: bucket 2
+    """
+    if not band_masks:
+        return []
+
+    h = len(band_masks[0])
+    w = len(band_masks[0][0]) if band_masks[0] else 0
+
+    if h == 0 or w == 0:
+        return []
+
+    # Create offset table
+    offset_table = [[0] * w for _ in range(h)]
+
+    # For each band, compute offset for its pixels
+    for band_idx, band_mask in enumerate(band_masks):
+        if axis == "row":
+            # Find row range for this band
+            rows_in_band = set()
+            for r in range(h):
+                if any(band_mask[r][c] == 1 for c in range(w)):
+                    rows_in_band.add(r)
+
+            if rows_in_band:
+                min_row = min(rows_in_band)
+                max_row = max(rows_in_band)
+                band_height = max_row - min_row + 1
+
+                # Assign buckets based on position in band
+                for r in range(h):
+                    for c in range(w):
+                        if band_mask[r][c] == 1:
+                            # Normalize position within band
+                            offset = r - min_row
+                            if band_height == 1:
+                                bucket = 1  # Single row = middle
+                            elif offset < band_height / 3:
+                                bucket = 0  # Start third
+                            elif offset < 2 * band_height / 3:
+                                bucket = 1  # Middle third
+                            else:
+                                bucket = 2  # End third
+                            offset_table[r][c] = bucket
+
+        else:  # axis == "col"
+            # Find col range for this band
+            cols_in_band = set()
+            for c in range(w):
+                if any(band_mask[r][c] == 1 for r in range(h)):
+                    cols_in_band.add(c)
+
+            if cols_in_band:
+                min_col = min(cols_in_band)
+                max_col = max(cols_in_band)
+                band_width = max_col - min_col + 1
+
+                # Assign buckets based on position in band
+                for r in range(h):
+                    for c in range(w):
+                        if band_mask[r][c] == 1:
+                            # Normalize position within band
+                            offset = c - min_col
+                            if band_width == 1:
+                                bucket = 1  # Single col = middle
+                            elif offset < band_width / 3:
+                                bucket = 0  # Start third
+                            elif offset < 2 * band_width / 3:
+                                bucket = 1  # Middle third
+                            else:
+                                bucket = 2  # End third
+                            offset_table[r][c] = bucket
+
+    return offset_table
+
+
+def component_largest_mask(
+    id_grid: list[list[int]], meta: list[dict]
+) -> list[list[int]]:
+    """
+    Compute mask of pixels belonging to the largest component (pair-invariant).
+
+    Returns binary mask: 1 if pixel is in the largest component, 0 otherwise.
+
+    Args:
+        id_grid: Component ID grid from component_id_table
+        meta: Component metadata list
+
+    Returns:
+        Binary mask indicating largest component
+
+    Examples:
+        >>> # Component 0 has size 100 (largest), component 1 has size 50
+        >>> # Pixels with id_grid[r][c] == 0 get mask value 1
+    """
+    if not id_grid or not meta:
+        return []
+
+    h = len(id_grid)
+    w = len(id_grid[0]) if id_grid else 0
+
+    if h == 0 or w == 0:
+        return [[]]
+
+    # Find largest component(s)
+    max_size = max(comp["size"] for comp in meta) if meta else 0
+
+    # Create mask
+    mask = [[0] * w for _ in range(h)]
+    for r in range(h):
+        for c in range(w):
+            comp_id = id_grid[r][c]
+            if comp_id < len(meta) and meta[comp_id]["size"] == max_size:
+                mask[r][c] = 1
+
+    return mask
+
+
+def component_size_bucket_table(
+    id_grid: list[list[int]], meta: list[dict]
+) -> list[list[int]]:
+    """
+    Compute component size buckets (pair-invariant).
+
+    Returns bucket indicating component size:
+    - 0: Tiny (≤4 pixels)
+    - 1: Small (5-8 pixels)
+    - 2: Medium (9-16 pixels)
+    - 3: Large (>16 pixels)
+
+    Args:
+        id_grid: Component ID grid from component_id_table
+        meta: Component metadata list
+
+    Returns:
+        Grid of size bucket values (0, 1, 2, or 3)
+    """
+    if not id_grid or not meta:
+        return []
+
+    h = len(id_grid)
+    w = len(id_grid[0]) if id_grid else 0
+
+    if h == 0 or w == 0:
+        return [[]]
+
+    # Create size bucket table
+    size_table = [[0] * w for _ in range(h)]
+
+    for r in range(h):
+        for c in range(w):
+            comp_id = id_grid[r][c]
+            if comp_id < len(meta):
+                size = meta[comp_id]["size"]
+
+                # Assign bucket
+                if size <= 4:
+                    bucket = 0
+                elif size <= 8:
+                    bucket = 1
+                elif size <= 16:
+                    bucket = 2
+                else:
+                    bucket = 3
+
+                size_table[r][c] = bucket
+
+    return size_table
+
+
+def component_aspect_bucket_table(
+    id_grid: list[list[int]], meta: list[dict]
+) -> list[list[int]]:
+    """
+    Compute component aspect ratio buckets (pair-invariant).
+
+    Returns bucket indicating component shape:
+    - 0: Tall (height > width * 1.5)
+    - 1: Square (within 1.5 ratio)
+    - 2: Wide (width > height * 1.5)
+
+    Args:
+        id_grid: Component ID grid from component_id_table
+        meta: Component metadata list
+
+    Returns:
+        Grid of aspect bucket values (0, 1, or 2)
+    """
+    if not id_grid or not meta:
+        return []
+
+    h = len(id_grid)
+    w = len(id_grid[0]) if id_grid else 0
+
+    if h == 0 or w == 0:
+        return [[]]
+
+    # Create aspect bucket table
+    aspect_table = [[1] * w for _ in range(h)]  # Default to square
+
+    for r in range(h):
+        for c in range(w):
+            comp_id = id_grid[r][c]
+            if comp_id < len(meta):
+                bbox = meta[comp_id]["bbox"]
+                r0, c0, r1, c1 = bbox
+
+                height = r1 - r0 + 1
+                width = c1 - c0 + 1
+
+                # Assign bucket based on aspect ratio
+                if height > width * 1.5:
+                    bucket = 0  # Tall
+                elif width > height * 1.5:
+                    bucket = 2  # Wide
+                else:
+                    bucket = 1  # Square
+
+                aspect_table[r][c] = bucket
+
+    return aspect_table
+
+
 def phi_signature_tables(X: list[list[int]]) -> dict:
     """
     Aggregate ALL Φ features (P4-01 through P4-06) into single dict.
@@ -1022,6 +1353,20 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
     patchkey_r3 = patchkey_table(X, 3)
     patchkey_r4 = patchkey_table(X, 4)
 
+    # Bug B2 Fix: Compute pair-invariant NPS and component features
+    # These replace raw band IDs and component IDs in signatures
+
+    # NPS pair-invariant features
+    row_boundary = nps_boundary_masks(row_bands, "row")
+    col_boundary = nps_boundary_masks(col_bands, "col")
+    row_offset = nps_offset_bucket_table(row_bands, "row")
+    col_offset = nps_offset_bucket_table(col_bands, "col")
+
+    # Component pair-invariant features
+    largest_comp = component_largest_mask(id_grid, meta)
+    comp_size = component_size_bucket_table(id_grid, meta)
+    comp_aspect = component_aspect_bucket_table(id_grid, meta)
+
     # Assemble with FIXED KEY ORDER (for deterministic JSON)
     result = {
         "index": {
@@ -1032,6 +1377,11 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
         "nps": {
             "row_bands": row_bands,
             "col_bands": col_bands,
+            # Pair-invariant features (Bug B2 fix)
+            "row_boundary": row_boundary,
+            "col_boundary": col_boundary,
+            "row_offset": row_offset,
+            "col_offset": col_offset,
         },
         "local": {
             "is_color": is_color_dict,
@@ -1040,6 +1390,10 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
         "components": {
             "id_grid": id_grid,
             "meta": meta,
+            # Pair-invariant features (Bug B2 fix)
+            "largest_comp": largest_comp,
+            "comp_size": comp_size,
+            "comp_aspect": comp_aspect,
         },
         "patchkeys": {
             "r2": patchkey_r2,

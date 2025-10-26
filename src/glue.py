@@ -222,22 +222,25 @@ def _build_signature(
     feats: dict, r: int, c: int, Xp: list[list[int]]
 ) -> tuple:
     """
-    Extract 13-field signature tuple at pixel (r,c).
+    Extract 12-field pair-invariant signature tuple at pixel (r,c).
+
+    BUG FIXES (2025-10-26):
+    - B1: Removed absolute position features (parity, rowmod, colmod)
+    - B2: Replaced pair-specific IDs with pair-invariant features
 
     Signature fields (in fixed order):
-    1. parity: (r+c) % 2
-    2. rowmod2: r % 2
-    3. rowmod3: r % 3
-    4. colmod2: c % 2
-    5. colmod3: c % 3
-    6. row_band_id: index in row_band_masks, or -1 if no band contains (r,c)
-    7. col_band_id: index in col_band_masks, or -1 if no band contains (r,c)
-    8. is_color: Xp[r][c] (original color at pixel)
-    9. touching_flags: 10-bit bitmask (bit c set if touching_color[c][r][c])
-    10. component_id: id_grid[r][c]
-    11. patchkey_r2: key from patchkeys["r2"][r][c] (tuple or None)
-    12. patchkey_r3: key from patchkeys["r3"][r][c] (tuple or None)
-    13. patchkey_r4: key from patchkeys["r4"][r][c] (tuple or None)
+    1. row_boundary: 1 if on NPS row boundary, 0 otherwise
+    2. col_boundary: 1 if on NPS col boundary, 0 otherwise
+    3. row_offset: position within row band (0=start, 1=middle, 2=end)
+    4. col_offset: position within col band (0=start, 1=middle, 2=end)
+    5. is_color: Xp[r][c] (original color at pixel)
+    6. touching_flags: 10-bit bitmask (bit c set if touching_color[c][r][c])
+    7. largest_comp: 1 if in largest component, 0 otherwise
+    8. comp_size: component size bucket (0=tiny, 1=small, 2=medium, 3=large)
+    9. comp_aspect: component aspect (0=tall, 1=square, 2=wide)
+    10. patchkey_r2: key from patchkeys["r2"][r][c] (tuple or None)
+    11. patchkey_r3: key from patchkeys["r3"][r][c] (tuple or None)
+    12. patchkey_r4: key from patchkeys["r4"][r][c] (tuple or None)
 
     Args:
         feats: Φ features dict from phi_signature_tables(Xp)
@@ -246,26 +249,18 @@ def _build_signature(
         Xp: Original transformed grid (for is_color field)
 
     Returns:
-        13-tuple signature in fixed order (deterministic, comparable)
+        12-tuple signature in fixed order (deterministic, comparable)
     """
-    # Index predicates (fields 1-5)
-    parity = 1 if feats["index"]["parity"]["M1"][r][c] else 0
-    rowmod2 = 1 if feats["index"]["rowmod"]["k2"][1][r][c] else 0
-    rowmod3 = next(i for i in range(3) if feats["index"]["rowmod"]["k3"][i][r][c])
-    colmod2 = 1 if feats["index"]["colmod"]["k2"][1][r][c] else 0
-    colmod3 = next(i for i in range(3) if feats["index"]["colmod"]["k3"][i][r][c])
+    # NPS pair-invariant features (fields 1-4)
+    row_boundary = feats["nps"]["row_boundary"][r][c]
+    col_boundary = feats["nps"]["col_boundary"][r][c]
+    row_offset = feats["nps"]["row_offset"][r][c]
+    col_offset = feats["nps"]["col_offset"][r][c]
 
-    # NPS bands (fields 6-7)
-    row_bands = feats["nps"]["row_bands"]
-    row_band_id = next((i for i, mask in enumerate(row_bands) if mask[r][c]), -1)
-
-    col_bands = feats["nps"]["col_bands"]
-    col_band_id = next((i for i, mask in enumerate(col_bands) if mask[r][c]), -1)
-
-    # Original color (field 8)
+    # Original color (field 5)
     is_color = Xp[r][c]
 
-    # Touching flags: pack 10-bit mask (field 9)
+    # Touching flags: pack 10-bit mask (field 6)
     # Bit position c is set if touching_color[c][r][c] == True
     touching_flags = sum(
         (1 << color)
@@ -273,10 +268,12 @@ def _build_signature(
         if feats["local"]["touching_color"][color][r][c]
     )
 
-    # Component ID (field 10)
-    component_id = feats["components"]["id_grid"][r][c]
+    # Component pair-invariant features (fields 7-9)
+    largest_comp = feats["components"]["largest_comp"][r][c]
+    comp_size = feats["components"]["comp_size"][r][c]
+    comp_aspect = feats["components"]["comp_aspect"][r][c]
 
-    # Patchkeys (fields 11-13)
+    # Patchkeys (fields 10-12)
     # Convert None to empty tuple for sortability (None < tuple fails)
     patchkey_r2 = feats["patchkeys"]["r2"][r][c]
     patchkey_r3 = feats["patchkeys"]["r3"][r][c]
@@ -288,16 +285,15 @@ def _build_signature(
     patchkey_r4 = () if patchkey_r4 is None else patchkey_r4
 
     return (
-        parity,
-        rowmod2,
-        rowmod3,
-        colmod2,
-        colmod3,
-        row_band_id,
-        col_band_id,
+        row_boundary,
+        col_boundary,
+        row_offset,
+        col_offset,
         is_color,
         touching_flags,
-        component_id,
+        largest_comp,
+        comp_size,
+        comp_aspect,
         patchkey_r2,
         patchkey_r3,
         patchkey_r4,
