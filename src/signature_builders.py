@@ -921,3 +921,135 @@ def patchkey_table(g: list[list[int]], r: int) -> list[list[object]]:
             table[i][j] = key
 
     return table
+
+
+def phi_signature_tables(X: list[list[int]]) -> dict:
+    """
+    Aggregate ALL Φ features (P4-01 through P4-06) into single dict.
+
+    Returns a comprehensive signature dict containing:
+    - index: Parity and modulo predicates (row/col mod k for k∈{2,3})
+    - nps: Non-periodic segmentation bands (row/col)
+    - local: Color masks and touching masks for ALL colors 0-9
+    - components: Component ID table with metadata
+    - patchkeys: Canonical patch keys for radii r∈{2,3,4}
+
+    Properties:
+    - Φ.3 (Stability): Input-only, no Y dependencies
+    - Fixed key order: deterministic JSON serialization
+    - ALL colors 0-9: is_color and touching_color exist even if absent from X
+    - Shape consistency: all masks/tables have shape(X)
+    - Empty grid handling: returns minimal valid structure
+
+    Args:
+        X: Input grid (list of lists of ints)
+
+    Returns:
+        Dict with fixed key order ["index", "nps", "local", "components", "patchkeys"]:
+        {
+            "index": {
+                "parity": [M0, M1],
+                "rowmod_k2": [M0, M1],
+                "rowmod_k3": [M0, M1, M2],
+                "colmod_k2": [M0, M1],
+                "colmod_k3": [M0, M1, M2]
+            },
+            "nps": {
+                "row_bands": [B0, ..., Bn],
+                "col_bands": [B0, ..., Bn]
+            },
+            "local": {
+                "is_color": {
+                    "0": M0, "1": M1, ..., "9": M9
+                },
+                "touching_color": {
+                    "0": T0, "1": T1, ..., "9": T9
+                }
+            },
+            "components": {
+                "id_grid": [[id, ...], ...],
+                "meta": [{"color": c, "size": s, "bbox": b, "seed_rc": rc}, ...]
+            },
+            "patchkeys": {
+                "r2": [[key or None, ...], ...],
+                "r3": [[key or None, ...], ...],
+                "r4": [[key or None, ...], ...]
+            }
+        }
+
+    Raises:
+        ValueError: If X is ragged
+
+    Examples:
+        >>> phi_signature_tables([])
+        {
+            "index": {...},
+            "nps": {"row_bands": [], "col_bands": []},
+            "local": {"is_color": {...}, "touching_color": {...}},
+            "components": {"id_grid": [], "meta": []},
+            "patchkeys": {"r2": [], "r3": [], "r4": []}
+        }
+
+        >>> result = phi_signature_tables([[5, 5], [5, 5]])
+        >>> result["local"]["is_color"]["5"]
+        [[1, 1], [1, 1]]
+        >>> result["local"]["is_color"]["3"]
+        [[0, 0], [0, 0]]
+    """
+    _validate_rectangular(X)
+
+    # P4-01: Index Predicates
+    parity_m0, parity_m1 = parity_mask(X)
+    rowmod_k2 = rowmod_mask(X, 2)
+    rowmod_k3 = rowmod_mask(X, 3)
+    colmod_k2 = colmod_mask(X, 2)
+    colmod_k3 = colmod_mask(X, 3)
+
+    # P4-02: NPS Bands
+    row_bands = row_band_masks(X)
+    col_bands = col_band_masks(X)
+
+    # P4-03: Local Content - ALL colors 0-9 (even if absent)
+    is_color_dict = {}
+    touching_color_dict = {}
+    for color in range(10):
+        is_color_dict[str(color)] = is_color_mask(X, color)
+        touching_color_dict[str(color)] = touching_color_mask(X, color)
+
+    # P4-04: Component IDs
+    id_grid, meta = component_id_table(X)
+
+    # P4-06: Patchkey Tables
+    patchkey_r2 = patchkey_table(X, 2)
+    patchkey_r3 = patchkey_table(X, 3)
+    patchkey_r4 = patchkey_table(X, 4)
+
+    # Assemble with FIXED KEY ORDER (for deterministic JSON)
+    result = {
+        "index": {
+            "parity": [parity_m0, parity_m1],
+            "rowmod_k2": rowmod_k2,
+            "rowmod_k3": rowmod_k3,
+            "colmod_k2": colmod_k2,
+            "colmod_k3": colmod_k3,
+        },
+        "nps": {
+            "row_bands": row_bands,
+            "col_bands": col_bands,
+        },
+        "local": {
+            "is_color": is_color_dict,
+            "touching_color": touching_color_dict,
+        },
+        "components": {
+            "id_grid": id_grid,
+            "meta": meta,
+        },
+        "patchkeys": {
+            "r2": patchkey_r2,
+            "r3": patchkey_r3,
+            "r4": patchkey_r4,
+        },
+    }
+
+    return result
