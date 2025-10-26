@@ -16,6 +16,8 @@ from src.action_inference import infer_action_for_class
 from src.mdl_selection import compute_mdl
 from src.signature_builders import phi_signature_tables, Schema
 from src.solver_step1 import GLOBAL_FAMILIES
+from src.canvas import IdentityColor
+from src.task_color_canon import TaskColorCanon
 from collections import defaultdict
 
 
@@ -266,20 +268,28 @@ def _apply_candidate_to_tests(
     if not test_inputs:
         return []
 
-    # Get apply_fn and schema from chosen candidate
+    # Get apply_fn, canvas, and schema from chosen candidate
     apply_p_fn = chosen["P"]["apply_fn"]
+    canvas = chosen["canvas"]  # Canvas used during training
     schema = chosen["schema"]  # Use same schema as training
     classes = chosen["classes"]
     actions_by_cid = chosen["actions"]
 
     # Edge case: no classes (Identity with 0 edits)
     if not classes:
-        return [apply_p_fn(X_test) for X_test in test_inputs]
+        # Apply canvas then P to test inputs
+        results = []
+        for X_test in test_inputs:
+            X_canvas, _ = canvas.apply(X_test)
+            results.append(apply_p_fn(X_canvas))
+        return results
 
     # Build sig_to_cid map from training data
-    # Re-apply P to training to get items and rebuild signatures with same schema
+    # Re-apply canvas + P to training to get items and rebuild signatures with same schema
     train_pairs = [(pair["input"], pair["output"]) for pair in task["train"]]
-    tr_pairs_afterP = [(apply_p_fn(X), Y) for X, Y in train_pairs]
+    # Apply canvas first, then P (same order as training)
+    tr_pairs_canvas = [(canvas.apply(X)[0], Y) for X, Y in train_pairs]
+    tr_pairs_afterP = [(apply_p_fn(X_c), Y) for X_c, Y in tr_pairs_canvas]
     items, _ = build_phi_partition(tr_pairs_afterP, schema)  # Use stored schema
 
     # Build signature → class_id map
@@ -294,8 +304,9 @@ def _apply_candidate_to_tests(
     # Apply to each test input
     predictions = []
     for X_test in test_inputs:
-        # Apply P
-        Xp_test = apply_p_fn(X_test)
+        # Apply canvas first, then P (same order as training)
+        X_test_canvas, _ = canvas.apply(X_test)
+        Xp_test = apply_p_fn(X_test_canvas)
 
         # Build Φ signatures for test with same schema as training
         feats_test = phi_signature_tables(Xp_test, schema)
@@ -391,6 +402,16 @@ def solve_step2(task: dict) -> dict:
             "candidates_tried": []
         }
 
+    # Stage G0: Fit canvases on raw training inputs
+    # Two canvas options: IdentityColor (no-op) and TaskColorCanon (WL-based)
+    train_inputs_raw = [pair["input"] for pair in train_data]
+
+    canvas_identity = IdentityColor()
+    canvas_identity.fit(train_inputs_raw)  # no-op for Identity
+
+    canvas_taskcanon = TaskColorCanon()
+    canvas_taskcanon.fit(train_inputs_raw)
+
     # Enumerate all P
     P_registry = _enumerate_P_registry()
 
@@ -433,10 +454,29 @@ def solve_step2(task: dict) -> dict:
         Schema(use_is_color=True, use_patch_r4=True),                       # S3_colorful (FINEST)
     ]
 
-    # Collect all passing candidates (all P × all schemas)
+    # Collect all passing candidates (all C × P × schemas)
     candidates = []
 
     for schema in SCHEMAS:
+        # Stage C: Determine compatible canvas for this schema
+        # Canon schemas use TaskColorCanon, colorful schemas use IdentityColor
+        if schema.use_canon_color_id:
+            canvas = canvas_taskcanon
+        elif schema.use_is_color:
+            canvas = canvas_identity
+        else:
+            # Colorless schema - use Identity (no color transformation needed)
+            canvas = canvas_identity
+
+        # Apply canvas to training inputs (NOT outputs!)
+        train_pairs_canvas = []
+        for pair in train_data:
+            X_raw = pair["input"]
+            Y_raw = pair["output"]  # Keep output in original colors
+
+            X_canvas, aux_data = canvas.apply(X_raw)
+            train_pairs_canvas.append((X_canvas, Y_raw))
+
         for p_entry in P_registry:
             p_desc = {
                 "name": p_entry["name"],
@@ -452,8 +492,10 @@ def solve_step2(task: dict) -> dict:
                 family_class = p_entry["family_class"]
                 instance = family_class()
 
-                # Fit on training data (expects list of dicts with "input" and "output")
-                fit_success = instance.fit(train_data)
+                # Fit on canvas-transformed training data
+                # Convert to dict format for fit()
+                train_data_canvas = [{"input": X_c, "output": Y} for X_c, Y in train_pairs_canvas]
+                fit_success = instance.fit(train_data_canvas)
                 if not fit_success:
                     # Fit failed, skip this P
                     continue
@@ -461,9 +503,8 @@ def solve_step2(task: dict) -> dict:
                 # Use instance.apply as the transform function
                 apply_p_fn = instance.apply
 
-            # Convert train to expected format for build_candidate_for_P
-            train_pairs = [(pair["input"], pair["output"]) for pair in train_data]
-            task_for_candidate = {**task, "train": train_pairs}
+            # Pass canvas-transformed task to build_candidate_for_P
+            task_for_candidate = {**task, "train": train_pairs_canvas}
 
             # Try to build candidate for this (P, schema) combination
             try:
@@ -473,8 +514,9 @@ def solve_step2(task: dict) -> dict:
                 continue
 
             if candidate is not None:
-                # Add apply_fn to candidate for test application
+                # Add apply_fn and canvas to candidate for test application
                 candidate["P"]["apply_fn"] = apply_p_fn
+                candidate["canvas"] = canvas  # Store canvas for test-time application
                 candidates.append(candidate)
 
     # If no candidates pass, return UNSAT
