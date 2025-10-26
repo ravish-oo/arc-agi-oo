@@ -537,7 +537,7 @@ pytest tests/test_glue.py  # Stitching exactness verified
 Here’s the Phase-6 WO lineup (titles only), each ≤500 LOC and dependency-clean within P6:
 
 * **P6-01 — Residuals:** `compute_residual(Xp, Y)` ✅ COMPLETE
-* **P6-02 — Φ Partition Builder:** `build_phi_partition(tr_pairs_afterP)`
+* **P6-02 — Φ Partition Builder:** `build_phi_partition(tr_pairs_afterP)` ✅ COMPLETE
 * **P6-03 — Stitcher:** `stitch_from_classes(items, classes, actions_by_cid)`
 * **P6-04 — GLUE Verifier:** `verify_stitched_equality(items, classes, actions_by_cid)`
 * **P6-05 — GLUE Property Tests:** stitched == one-shot; seam rejection

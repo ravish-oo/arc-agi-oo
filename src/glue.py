@@ -6,7 +6,7 @@ All functions are pure (no mutation) and deterministic.
 """
 
 from collections import defaultdict
-from src.utils import dims
+from src.utils import dims, copy_grid
 from src.signature_builders import phi_signature_tables
 
 
@@ -302,3 +302,147 @@ def _build_signature(
         patchkey_r3,
         patchkey_r4,
     )
+
+
+def stitch_from_classes(
+    items: list[dict],
+    classes: dict[int, list[tuple[int, int, int]]],
+    actions_by_cid: dict[int, tuple[str, object | None]],
+    enable_seam_check: bool = False,
+) -> list[list[list[int]]]:
+    """
+    Apply one action per Φ-class to rebuild outputs from FROZEN base Xp.
+
+    This is the core GLUE stitching function. For each train, it creates a
+    fresh output Out_i seeded from Xp_i, then applies class actions in
+    deterministic order. All reads come ONLY from Xp_i (frozen base), all
+    writes go to Out_i. This ensures GLUE compositionality: stitched output
+    equals one-shot application.
+
+    Mathematical semantics:
+    - For each train i: Out_i = Xp_i  (initialize)
+    - For each class K in ascending order:
+      - coords_i = {(r,c) | (i,r,c) ∈ classes[K]}
+      - Apply action_K reading from Xp_i, writing to Out_i at coords_i
+    - Return [Out_0, Out_1, ..., Out_n]
+
+    GLUE invariant: ALL reads from Xp (frozen), NEVER from Out (being written).
+
+    Args:
+        items: List of training pair dicts from build_phi_partition:
+            [{"Xp": grid, "Y": grid, "feats": dict, "residual": grid}, ...]
+        classes: Dict mapping class_id → list of (train_idx, row, col):
+            {0: [(0,0,0), (0,1,1)], 1: [(1,2,3)], ...}
+            Coordinates are row-major sorted per train (guaranteed by caller)
+        actions_by_cid: Dict mapping class_id → action tuple:
+            {0: ("set_color", 5), 1: ("mirror_h", None), ...}
+            Action tuples: (name, param) where name ∈ {set_color, mirror_h,
+            mirror_v, keep_nonzero, identity}
+        enable_seam_check: If True, verify no overlapping writes (Φ.2)
+
+    Returns:
+        List of stitched output grids, one per train: [Out_0, Out_1, ...]
+
+    Raises:
+        ValueError: If Xp_i is ragged (non-rectangular)
+        ValueError: If actions_by_cid missing a class_id from classes
+        ValueError: If seam check enabled and overlapping writes detected
+
+    Postconditions:
+        - GLUE safety: All reads from Xp, all writes to Out (no read-after-write)
+        - Purity: items unchanged, Out_i rows newly allocated
+        - Determinism: Fixed class_id order, sorted coords per train
+        - Shape: dims(Out_i) == dims(Xp_i) for all i
+
+    Examples:
+        >>> # Empty classes → deep copies
+        >>> items = [{"Xp": [[1,2]], "Y": [[1,2]], "feats": {}, "residual": [[None,None]]}]
+        >>> outs = stitch_from_classes(items, {}, {})
+        >>> outs
+        [[[1, 2]]]
+
+        >>> # Single class, set_color
+        >>> items = [{"Xp": [[0,0]], "Y": [[5,5]], "feats": {}, "residual": [[5,5]]}]
+        >>> classes = {0: [(0,0,0), (0,0,1)]}
+        >>> actions = {0: ("set_color", 5)}
+        >>> outs = stitch_from_classes(items, classes, actions)
+        >>> outs
+        [[[5, 5]]]
+    """
+    # Handle empty items edge case
+    if not items:
+        return []
+
+    # Initialize outputs: deep copy of Xp for each train
+    outputs = [copy_grid(item["Xp"]) for item in items]
+
+    # Validate all Xp are rectangular (dims will raise if ragged)
+    for i, item in enumerate(items):
+        dims(item["Xp"])  # Raises ValueError if ragged
+
+    # Optional seam check: track written coordinates per train
+    if enable_seam_check:
+        write_masks = [set() for _ in range(len(items))]
+
+    # Process classes in ascending order (deterministic)
+    for class_id in sorted(classes.keys()):
+        # Check action exists for this class
+        if class_id not in actions_by_cid:
+            raise ValueError(
+                f"Missing action for class_id {class_id}. "
+                f"actions_by_cid must contain all class IDs from classes."
+            )
+
+        action_name, param = actions_by_cid[class_id]
+        coords = classes[class_id]
+
+        # Group coords by train index
+        coords_by_train = defaultdict(list)
+        for train_idx, r, c in coords:
+            coords_by_train[train_idx].append((r, c))
+
+        # Apply action to each train independently
+        for train_idx, train_coords in coords_by_train.items():
+            Xp = items[train_idx]["Xp"]
+            Out = outputs[train_idx]
+            R, C = dims(Xp)
+
+            # Optional seam check: verify no overlaps
+            if enable_seam_check:
+                overlap = set(train_coords) & write_masks[train_idx]
+                if overlap:
+                    raise ValueError(
+                        f"Seam check failed: class {class_id} overlaps with "
+                        f"previous writes at train {train_idx}, coords {sorted(overlap)}"
+                    )
+                write_masks[train_idx].update(train_coords)
+
+            # Apply action (read from frozen Xp, write to Out)
+            if action_name == "set_color":
+                for r, c in train_coords:
+                    Out[r][c] = param
+
+            elif action_name == "mirror_h":
+                # Horizontal mirror: Out[r][c] = Xp[R-1-r][c]
+                for r, c in train_coords:
+                    Out[r][c] = Xp[R - 1 - r][c]
+
+            elif action_name == "mirror_v":
+                # Vertical mirror: Out[r][c] = Xp[r][C-1-c]
+                for r, c in train_coords:
+                    Out[r][c] = Xp[r][C - 1 - c]
+
+            elif action_name == "keep_nonzero":
+                # Keep nonzero: Out[r][c] = Xp[r][c] if nonzero else 0
+                for r, c in train_coords:
+                    Out[r][c] = Xp[r][c] if Xp[r][c] != 0 else 0
+
+            elif action_name == "identity":
+                # Identity: Out[r][c] = Xp[r][c]
+                for r, c in train_coords:
+                    Out[r][c] = Xp[r][c]
+
+            else:
+                raise ValueError(f"Unknown action: {action_name}")
+
+    return outputs
