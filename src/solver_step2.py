@@ -14,7 +14,7 @@ from src.utils import dims, copy_grid
 from src.glue import build_phi_partition, verify_stitched_equality, _build_signature
 from src.action_inference import infer_action_for_class
 from src.mdl_selection import compute_mdl
-from src.signature_builders import phi_signature_tables
+from src.signature_builders import phi_signature_tables, Schema
 from src.solver_step1 import GLOBAL_FAMILIES
 from collections import defaultdict
 
@@ -394,10 +394,43 @@ def solve_step2(task: dict) -> dict:
     # Enumerate all P
     P_registry = _enumerate_P_registry()
 
-    # Schema lattice for MDL minimality (coarse-to-fine)
-    # S0: Fastest to compute, minimal discrimination
-    # S3: Slowest to compute, maximal discrimination
-    SCHEMAS = ['S0', 'S1', 'S2', 'S3']
+    # Helper: Feature complexity vector for MDL minimality
+    def feature_complexity_vector(schema):
+        """
+        Return tuple ranking schema by feature complexity (coarse-to-fine).
+
+        MDL principle: Prefer simplest schema that satisfies FY/GLUE constraints.
+        Ordering: colorless < colorful, fewer patchkeys < more patchkeys.
+
+        Returns:
+            Tuple (use_is_color, patchkey_count) for lexicographic comparison.
+            Examples:
+                Schema()                              → (0, 0) - COARSEST
+                Schema(use_patch_r2=True)             → (0, 1)
+                Schema(use_patch_r3=True)             → (0, 1)
+                Schema(use_patch_r4=True)             → (0, 1)
+                Schema(use_is_color=True)             → (1, 0)
+                Schema(use_is_color=True, use_patch_r2=True) → (1, 1) - FINEST
+        """
+        is_color_cost = 1 if schema.use_is_color else 0
+        patchkey_count = sum([schema.use_patch_r2, schema.use_patch_r3, schema.use_patch_r4])
+        return (is_color_cost, patchkey_count)
+
+    # Schema lattice for MDL minimality (coarse-to-fine, colorless-first)
+    # Ordering follows ChatGPT Pro's specification: prefer colorless schemas first
+    # Within colorless/colorful: prefer fewer patchkeys
+    SCHEMAS = [
+        # Colorless variants (most coarse, best for palette-permutation tasks)
+        Schema(),                                    # S0_colorless: 6-tuple (spatial only)
+        Schema(use_patch_r2=True),                   # S0_colorless + r2
+        Schema(use_patch_r3=True),                   # S0_colorless + r3
+        Schema(use_patch_r4=True),                   # S0_colorless + r4
+        # Colorful variants (legacy, for color-dependent tasks)
+        Schema(use_is_color=True),                   # S0_colorful: 7-tuple (+ is_color)
+        Schema(use_is_color=True, use_patch_r2=True), # S1_colorful
+        Schema(use_is_color=True, use_patch_r3=True), # S2_colorful
+        Schema(use_is_color=True, use_patch_r4=True), # S3_colorful (FINEST)
+    ]
 
     # Collect all passing candidates (all P × all schemas)
     candidates = []
@@ -452,17 +485,18 @@ def solve_step2(task: dict) -> dict:
         }
 
     # Sort candidates by MDL tuple (lexicographic order)
-    # MDL tuple with schema lattice:
-    # (schema_cost, num_classes, num_action_types, p_index, stable_hash)
-    # Prefer cheaper schemas (S0=0 < S1=1 < S2=2 < S3=3) for MDL minimality
+    # MDL tuple with schema lattice + feature complexity:
+    # (feature_complexity, num_classes, num_action_types, p_index, stable_hash)
+    # Prefer simpler schemas: colorless < colorful, fewer patchkeys < more patchkeys
     def mdl_key(c):
         mdl = c["mdl"]
+        schema = c["schema"]
         return (
-            mdl["schema_cost"],       # Primary: prefer coarser schemas (S0 first)
-            mdl["num_classes"],       # Secondary: fewer classes better
-            mdl["num_action_types"],  # Tertiary: fewer action types better
-            mdl["p_index"],           # Quaternary: earlier P in registry
-            mdl["hash"]               # Quinary: deterministic tie-breaking
+            feature_complexity_vector(schema),  # Primary: prefer coarser schemas (colorless first)
+            mdl["num_classes"],                 # Secondary: fewer classes better
+            mdl["num_action_types"],            # Tertiary: fewer action types better
+            mdl["p_index"],                     # Quaternary: earlier P in registry
+            mdl["hash"]                         # Quinary: deterministic tie-breaking
         )
 
     candidates.sort(key=mdl_key)

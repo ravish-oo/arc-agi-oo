@@ -140,11 +140,10 @@ class ColorMapFamily:
                     new_c = Y[r][c]
 
                     if old_c not in mapping:
-                        # New color in later pair not seen in first pair
-                        return False
-
-                    if mapping[old_c] != new_c:
-                        # Conflict: mapping doesn't work for this pair
+                        # New color in later pair - add it to mapping (cross-palette learning)
+                        mapping[old_c] = new_c
+                    elif mapping[old_c] != new_c:
+                        # Conflict: same input color maps to different outputs
                         return False
 
         # All pairs verified - store mapping and accept

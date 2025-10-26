@@ -41,6 +41,33 @@ from src.canonicalization import (
     apply_isometry,
     all_isometries,
 )
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Schema:
+    """
+    Input-only feature toggles for Φ signature construction (Π-compliant).
+
+    Controls which features are included in signatures for minimal sufficiency:
+    - Coarser schemas (fewer features) enable cross-color/cross-patch generalization
+    - Finer schemas (more features) enable task-specific discrimination
+    - MDL selects coarsest schema that satisfies FY on training data
+
+    Default (S0_colorless): No is_color, no patchkeys - most color-agnostic
+    """
+    # Always-on features (spatial structure)
+    use_parity_mod: bool = True       # row/col parity and mod features
+    use_nps_bands: bool = True         # NPS row_band/col_band
+    use_component_id: bool = True      # 8-connected component IDs
+
+    # Local patch keys (OFA → D8)
+    use_patch_r2: bool = False         # 5×5 local context
+    use_patch_r3: bool = False         # 7×7 local context
+    use_patch_r4: bool = False         # 9×9 local context
+
+    # Absolute color feature (most specific)
+    use_is_color: bool = False         # Specific color value (0-9)
 
 
 def _validate_rectangular(g: list[list[int]]) -> None:
@@ -1254,15 +1281,17 @@ def component_aspect_bucket_table(
     return aspect_table
 
 
-def phi_signature_tables(X: list[list[int]], schema: str = 'S3') -> dict:
+def phi_signature_tables(X: list[list[int]], schema = None) -> dict:
     """
     Aggregate ALL Φ features (P4-01 through P4-06) into single dict.
 
-    Schema Lattice (MDL Minimality):
-    - S0: Base features only (no patchkeys) - COARSEST, minimal discrimination
-    - S1: S0 + patchkey_r2 (5×5 local context)
-    - S2: S0 + patchkey_r3 (7×7 local context)
-    - S3: S0 + patchkey_r4 (9×9 local context) - FINEST, maximal discrimination
+    Schema Lattice (MDL Minimality + Color Agnosticism):
+    - S0_colorless: Base features, no patchkeys, no is_color - COARSEST, color-agnostic
+    - S1_colorless: S0_colorless + patchkey_r2 (5×5 local context)
+    - S2_colorless: S0_colorless + patchkey_r3 (7×7 local context)
+    - S3_colorless: S0_colorless + patchkey_r4 (9×9 local context)
+    - S0_colorful: Base features + is_color, no patchkeys - color-sensitive
+    - S1/S2/S3_colorful: Colorful variants with patchkeys
 
     Returns a comprehensive signature dict containing:
     - index: Parity and modulo predicates (row/col mod k for k∈{2,3})
@@ -1334,6 +1363,23 @@ def phi_signature_tables(X: list[list[int]], schema: str = 'S3') -> dict:
     """
     _validate_rectangular(X)
 
+    # Handle schema parameter (Schema object or legacy string, or None)
+    if schema is None:
+        schema = Schema()  # Default: S0_colorless (most color-agnostic)
+    elif isinstance(schema, str):
+        # Backward compatibility: legacy string schemas include is_color (OLD behavior)
+        # New Schema() objects default to colorless (NEW behavior for schema lattice)
+        if schema == 'S0':
+            schema = Schema(use_is_color=True)  # OLD S0 with color
+        elif schema == 'S1':
+            schema = Schema(use_is_color=True, use_patch_r2=True)
+        elif schema == 'S2':
+            schema = Schema(use_is_color=True, use_patch_r3=True)
+        elif schema == 'S3':
+            schema = Schema(use_is_color=True, use_patch_r4=True)
+        else:
+            raise ValueError(f"Invalid string schema: {schema}. Must be 'S0', 'S1', 'S2', or 'S3'.")
+
     # P4-01: Index Predicates
     parity_m0, parity_m1 = parity_mask(X)
     rowmod_k2 = rowmod_mask(X, 2)
@@ -1346,32 +1392,30 @@ def phi_signature_tables(X: list[list[int]], schema: str = 'S3') -> dict:
     col_bands = col_band_masks(X)
 
     # P4-03: Local Content - ALL colors 0-9 (even if absent)
-    is_color_dict = {}
-    touching_color_dict = {}
-    for color in range(10):
-        is_color_dict[color] = is_color_mask(X, color)
-        touching_color_dict[color] = touching_color_mask(X, color)
+    # Schema-conditional: only compute if is_color field will be used in signatures
+    if schema.use_is_color:
+        is_color_dict = {}
+        touching_color_dict = {}
+        for color in range(10):
+            is_color_dict[color] = is_color_mask(X, color)
+            touching_color_dict[color] = touching_color_mask(X, color)
+    else:
+        # Colorless schemas skip color-specific features
+        is_color_dict = None
+        touching_color_dict = None
 
     # P4-04: Component IDs
     id_grid, meta = component_id_table(X)
 
     # P4-06: Patchkey Tables (conditional based on schema)
     # Schema lattice for MDL minimality:
-    # - S0: no patchkeys (coarsest, minimal discrimination)
-    # - S1: only r2 (5×5 neighborhood)
-    # - S2: only r3 (7×7 neighborhood)
-    # - S3: only r4 (9×9 neighborhood, finest discrimination)
-    patchkey_r2 = None
-    patchkey_r3 = None
-    patchkey_r4 = None
-
-    if schema == 'S1':
-        patchkey_r2 = patchkey_table(X, 2)
-    elif schema == 'S2':
-        patchkey_r3 = patchkey_table(X, 3)
-    elif schema == 'S3':
-        patchkey_r4 = patchkey_table(X, 4)
-    # S0: no patchkeys computed (all remain None)
+    # - Schema(use_patch_r2/r3/r4=False): no patchkeys (coarsest, minimal discrimination)
+    # - Schema(use_patch_r2=True): only r2 (5×5 neighborhood)
+    # - Schema(use_patch_r3=True): only r3 (7×7 neighborhood)
+    # - Schema(use_patch_r4=True): only r4 (9×9 neighborhood, finest discrimination)
+    patchkey_r2 = patchkey_table(X, 2) if schema.use_patch_r2 else None
+    patchkey_r3 = patchkey_table(X, 3) if schema.use_patch_r3 else None
+    patchkey_r4 = patchkey_table(X, 4) if schema.use_patch_r4 else None
 
     # Bug B2 Fix: Compute pair-invariant NPS and component features
     # These replace raw band IDs and component IDs in signatures

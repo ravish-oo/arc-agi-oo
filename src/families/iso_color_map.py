@@ -164,11 +164,10 @@ class IsoColorMapFamily:
                     new_c = Y[r][c]
 
                     if old_c not in mapping:
-                        # New color in later pair not seen in first pair
-                        return None
-
-                    if mapping[old_c] != new_c:
-                        # Conflict: mapping doesn't work for this pair
+                        # New color in later pair - add it to mapping (cross-palette learning)
+                        mapping[old_c] = new_c
+                    elif mapping[old_c] != new_c:
+                        # Conflict: same input color maps to different outputs
                         return None
 
         # All pairs verified - this (σ, mapping) works!

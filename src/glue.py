@@ -7,7 +7,7 @@ All functions are pure (no mutation) and deterministic.
 
 from collections import defaultdict
 from src.utils import dims, copy_grid, deep_eq
-from src.signature_builders import phi_signature_tables
+from src.signature_builders import phi_signature_tables, Schema
 
 
 def compute_residual(Xp: list[list[int]], Y: list[list[int]]) -> list[list[object]]:
@@ -93,7 +93,7 @@ def compute_residual(Xp: list[list[int]], Y: list[list[int]]) -> list[list[objec
 
 def build_phi_partition(
     tr_pairs_afterP: list[tuple[list[list[int]], list[list[int]]]] | list[dict],
-    schema: str = 'S3'
+    schema = None
 ) -> tuple[list[dict], dict[int, list[tuple[int, int, int]]]]:
     """
     Build Φ-partition over residual pixels across training pairs.
@@ -104,10 +104,16 @@ def build_phi_partition(
     and stitching.
 
     Schema Lattice (MDL Minimality):
-    - S0: Base features only (no patchkeys) - COARSEST, minimal discrimination
-    - S1: S0 + patchkey_r2 (5×5 local context)
-    - S2: S0 + patchkey_r3 (7×7 local context)
-    - S3: S0 + patchkey_r4 (9×9 local context) - FINEST, maximal discrimination
+    Colorless variants (most coarse, best for palette-permutation tasks):
+    - Schema(): 6-tuple (spatial only, no is_color, no patchkeys) - COARSEST
+    - Schema(use_patch_r2=True): 7-tuple (+ patchkey_r2)
+    - Schema(use_patch_r3=True): 7-tuple (+ patchkey_r3)
+    - Schema(use_patch_r4=True): 7-tuple (+ patchkey_r4)
+
+    Colorful variants (legacy, for color-dependent tasks):
+    - Schema(use_is_color=True): 7-tuple (+ is_color, no patchkeys)
+    - Schema(use_is_color=True, use_patch_r2=True): 8-tuple (+ is_color + patchkey_r2)
+    - ... etc (8 variants total in schema lattice)
 
     Mathematical semantics:
     - For each train i: R_i marks pixels where Xp_i != Y_i (residual set)
@@ -124,8 +130,8 @@ def build_phi_partition(
             - Format A: [(Xp, Y), ...]  (list of tuples)
             - Format B: [{"Xp": ..., "Y": ...}, ...]  (list of dicts)
             - Each Xp, Y is a rectangular grid (list[list[int]])
-        schema: Schema level ('S0', 'S1', 'S2', 'S3') - controls patchkey inclusion
-            (default 'S3' for backward compatibility)
+        schema: Schema object or legacy string ('S0'/'S1'/'S2'/'S3') or None
+            (default None → Schema() → colorless base)
 
     Returns:
         Tuple (items, classes) where:
@@ -230,7 +236,7 @@ def build_phi_partition(
 
 
 def _build_signature(
-    feats: dict, r: int, c: int, Xp: list[list[int]], schema: str = 'S3'
+    feats: dict, r: int, c: int, Xp: list[list[int]], schema = None
 ) -> tuple:
     """
     Extract pair-invariant signature tuple at pixel (r,c).
@@ -239,94 +245,104 @@ def _build_signature(
     - B1: Removed absolute position features (parity, rowmod, colmod)
     - B2: Replaced pair-specific IDs with pair-invariant features
     - B4: Removed row_offset and col_offset (too position-specific)
-    - Schema Lattice: Conditional patchkey inclusion for MDL minimality
+    - Schema Lattice: Conditional is_color + patchkey inclusion for MDL minimality
 
     Schema Lattice (MDL Minimality):
-    - S0: 7-tuple (base features only, no patchkeys) - COARSEST
-    - S1: 8-tuple (base + patchkey_r2) - 5×5 local context
-    - S2: 8-tuple (base + patchkey_r3) - 7×7 local context
-    - S3: 8-tuple (base + patchkey_r4) - 9×9 local context (FINEST)
+    Colorless variants (most coarse, best for palette-permutation tasks):
+    - Schema(): 6-tuple (spatial only, no is_color, no patchkeys) - COARSEST
+    - Schema(use_patch_r2=True): 7-tuple (+ patchkey_r2)
+    - Schema(use_patch_r3=True): 7-tuple (+ patchkey_r3)
+    - Schema(use_patch_r4=True): 7-tuple (+ patchkey_r4)
 
-    Base signature fields (S0, 7-tuple):
+    Colorful variants (legacy, for color-dependent tasks):
+    - Schema(use_is_color=True): 7-tuple (+ is_color, no patchkeys)
+    - Schema(use_is_color=True, use_patch_r2=True): 8-tuple (+ is_color + patchkey_r2)
+    - ... etc (8 variants total in schema lattice)
+
+    Base signature fields (always present):
     1. row_boundary: 1 if on NPS row boundary, 0 otherwise
     2. col_boundary: 1 if on NPS col boundary, 0 otherwise
-    3. is_color: Xp[r][c] (original color at pixel)
-    4. touching_flags: 10-bit bitmask (bit c set if touching_color[c][r][c])
-    5. largest_comp: 1 if in largest component, 0 otherwise
-    6. comp_size: component size bucket (0=tiny, 1=small, 2=medium, 3=large)
-    7. comp_aspect: component aspect (0=tall, 1=square, 2=wide)
+    3. touching_flags: 10-bit bitmask (bit c set if touching_color[c][r][c])
+    4. largest_comp: 1 if in largest component, 0 otherwise
+    5. comp_size: component size bucket (0=tiny, 1=small, 2=medium, 3=large)
+    6. comp_aspect: component aspect (0=tall, 1=square, 2=wide)
 
-    Schema-conditional fields (S1/S2/S3, +1 field):
-    8. patchkey (schema-dependent): canonical patch key or () if None
+    Schema-conditional fields:
+    +1. is_color: Xp[r][c] (specific color value) - ONLY if schema.use_is_color
+    +1. patchkey: canonical patch key or () - ONLY if schema.use_patch_rN
 
     Args:
         feats: Φ features dict from phi_signature_tables(Xp, schema)
         r: Row index
         c: Column index
-        Xp: Original transformed grid (for is_color field)
-        schema: Schema level ('S0', 'S1', 'S2', 'S3') - default 'S3'
+        Xp: Original transformed grid (for is_color field, if used)
+        schema: Schema object or legacy string ('S0'/'S1'/'S2'/'S3') or None
 
     Returns:
-        Signature tuple (7-tuple for S0, 8-tuple for S1/S2/S3)
+        Signature tuple (length depends on schema configuration)
     """
+    # Handle schema parameter (Schema object or legacy string, or None)
+    if schema is None:
+        schema = Schema()  # Default: colorless base
+    elif isinstance(schema, str):
+        # Backward compatibility: legacy string schemas include is_color
+        if schema == 'S0':
+            schema = Schema(use_is_color=True)
+        elif schema == 'S1':
+            schema = Schema(use_is_color=True, use_patch_r2=True)
+        elif schema == 'S2':
+            schema = Schema(use_is_color=True, use_patch_r3=True)
+        elif schema == 'S3':
+            schema = Schema(use_is_color=True, use_patch_r4=True)
+        else:
+            raise ValueError(f"Invalid schema: {schema}. Must be 'S0', 'S1', 'S2', or 'S3'.")
+
     # Base features (always present in all schemas)
 
-    # NPS pair-invariant features (fields 1-2)
+    # NPS pair-invariant features
     row_boundary = feats["nps"]["row_boundary"][r][c]
     col_boundary = feats["nps"]["col_boundary"][r][c]
 
-    # Original color (field 3)
-    is_color = Xp[r][c]
-
-    # Touching flags: pack 10-bit mask (field 4)
+    # Touching flags: pack 10-bit mask
     # Bit position c is set if touching_color[c][r][c] == True
+    # NOTE: touching_color is STRUCTURAL (which colors are adjacent), not absolute color ID
     touching_flags = sum(
         (1 << color)
         for color in range(10)
         if feats["local"]["touching_color"][color][r][c]
     )
 
-    # Component pair-invariant features (fields 5-7)
+    # Component pair-invariant features
     largest_comp = feats["components"]["largest_comp"][r][c]
     comp_size = feats["components"]["comp_size"][r][c]
     comp_aspect = feats["components"]["comp_aspect"][r][c]
 
-    # Base 7-tuple (used by all schemas)
-    base_sig = (
+    # Build signature tuple conditionally based on schema
+    sig_parts = [
         row_boundary,
         col_boundary,
-        is_color,
         touching_flags,
         largest_comp,
         comp_size,
         comp_aspect,
-    )
+    ]
 
-    # Schema-conditional patchkey (field 8 for S1/S2/S3)
-    if schema == 'S0':
-        # S0: No patchkeys (coarsest schema)
-        return base_sig  # 7-tuple
+    # Schema-conditional: is_color (specific color value at pixel)
+    if schema.use_is_color:
+        sig_parts.append(Xp[r][c])
 
-    elif schema == 'S1':
-        # S1: Base + patchkey_r2 (5×5 context)
+    # Schema-conditional: patchkey (only ONE of r2/r3/r4 can be True)
+    if schema.use_patch_r2:
         patchkey = feats["patchkeys"]["r2"][r][c]
-        patchkey = () if patchkey is None else patchkey
-        return base_sig + (patchkey,)  # 8-tuple
-
-    elif schema == 'S2':
-        # S2: Base + patchkey_r3 (7×7 context)
+        sig_parts.append(() if patchkey is None else patchkey)
+    elif schema.use_patch_r3:
         patchkey = feats["patchkeys"]["r3"][r][c]
-        patchkey = () if patchkey is None else patchkey
-        return base_sig + (patchkey,)  # 8-tuple
-
-    elif schema == 'S3':
-        # S3: Base + patchkey_r4 (9×9 context, finest schema)
+        sig_parts.append(() if patchkey is None else patchkey)
+    elif schema.use_patch_r4:
         patchkey = feats["patchkeys"]["r4"][r][c]
-        patchkey = () if patchkey is None else patchkey
-        return base_sig + (patchkey,)  # 8-tuple
+        sig_parts.append(() if patchkey is None else patchkey)
 
-    else:
-        raise ValueError(f"Invalid schema: {schema}. Must be 'S0', 'S1', 'S2', or 'S3'.")
+    return tuple(sig_parts)
 
 
 def stitch_from_classes(
