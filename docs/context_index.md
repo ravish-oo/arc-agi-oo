@@ -236,6 +236,7 @@ Source-of-truth specifications
   - **Phase 2**: P2-01 through P2-16 (16 global families) ✅
   - **Phase 3**: P3-01 through P3-04 (Step-1 solver, receipts, CLI, coverage meter) ✅
   - **Phase 4**: P4-01 through P4-08 (Φ signature builders, property tests) ✅
+  - **Phase 5**: P5-01 through P5-05 (action kernels, verifier, inference, test suite) ✅
 
 ### `/reports/`
 Coverage tracking and metrics
@@ -267,11 +268,18 @@ Utility scripts
 - Patch canonicalizer (patch_canonical_key, patch_canonical_rep, patchkey_table)
 - Φ aggregator (phi_signature_tables) — assembles ALL Φ features into single dict
 
+**Phase 5 Action Inference** (`src/action_inference.py`):
+- Action kernels: apply_set_color, apply_keep_nonzero, apply_identity, apply_mirror_h, apply_mirror_v
+- Class verifier: verify_action_on_class (FY equality across all trains)
+- Inference core: infer_action_for_class (fixed action order, unified parameters)
+- See spec.md lines 43-49 for action definitions
+
 ### `/tests/`
 - **Phase 1**: 218 tests (utils, canonicalization, components) ✅
 - **Phase 2**: 581 tests (16 global families, comprehensive coverage) ✅
 - **Phase 3**: 55 tests (receipts, CLI, coverage meter) ✅
 - **Phase 4**: 194 tests (signature builders: index, NPS, local content, components, patchkeys, aggregator, properties) ✅
+- **Phase 5**: 288 tests (action kernels: 35+39, verifier: 40, inference: 34, comprehensive suite: 140) ✅
 - `measure_coverage.py` — Coverage measurement tool (deterministic, sorted output, per-family breakdown)
 
 ### `/reviews/`
@@ -279,6 +287,7 @@ Utility scripts
 - **Phase 2**: P2-01 through P2-16 math-reviewer verification (all PASS) ✅
 - **Phase 3**: P3-02 (receipts), P3-04 (coverage meter) algorithm-guardian verification (all PASS) ✅
 - **Phase 4**: P4-01 through P4-08 math-reviewer verification (Φ.3 stability, finiteness, disjointness — all PASS) ✅
+- **Phase 5**: P5-01 through P5-05 math-reviewer verification (GLUE-safety, FY exactness, purity, determinism — all PASS) ✅
 
 ---
 
@@ -315,5 +324,5 @@ Utility scripts
 
 ---
 
-**Last updated:** 2025-10-25 (Phase 4 complete — all Φ signature builders implemented and verified)
+**Last updated:** 2025-10-25 (Phase 5 complete — all action kernels, verifier, and inference implemented and verified)
 **Maintainers:** Update this file when adding new anchors, modules, or resolving ambiguities.

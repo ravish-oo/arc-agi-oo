@@ -405,7 +405,7 @@ P4-08 — Φ Test Suite: Φ.3 stability, finiteness, disjointness ✅ COMPLETE
 
 ---
 
-### Phase 5: Action Inference
+### Phase 5: Action Inference ✅ COMPLETE
 
 **Duration:** 1 day
 **Deliverable:** Complete action inference system
@@ -469,7 +469,7 @@ Here’s the Phase-5 WO lineup (titles only), each ≤500-LOC and dependency-cle
 * **P5-02 — Action Kernels II: apply_mirror_h, apply_mirror_v (pure, deterministic)** ✅ COMPLETE
 * **P5-03 — Class Verifier: verify_action_on_class (FY across all trains)** ✅ COMPLETE
 * **P5-04 — Inference Core: infer_action_for_class (ordered try, unified params, deterministic)** ✅ COMPLETE
-* **P5-05 — Action Test Suite: synthetic fixtures, purity checks, edge cases**
+* **P5-05 — Action Test Suite: synthetic fixtures, purity checks, edge cases** ✅ COMPLETE
 
 ---
 
@@ -532,6 +532,15 @@ pytest tests/test_glue.py  # Stitching exactness verified
 - **Disjoint classes are guaranteed by Φ** (Φ.2 property)
 - See primary-anchor.md lines 132-133 for GLUE theorem
 - fundamental_decisions.md Decision 1 has full stitching example
+
+#### Implementation WOs
+Here’s the Phase-6 WO lineup (titles only), each ≤500 LOC and dependency-clean within P6:
+
+* **P6-01 — Residuals:** `compute_residual(Xp, Y)`
+* **P6-02 — Φ Partition Builder:** `build_phi_partition(tr_pairs_afterP)`
+* **P6-03 — Stitcher:** `stitch_from_classes(items, classes, actions_by_cid)`
+* **P6-04 — GLUE Verifier:** `verify_stitched_equality(items, classes, actions_by_cid)`
+* **P6-05 — GLUE Property Tests:** stitched == one-shot; seam rejection
 
 ---
 
