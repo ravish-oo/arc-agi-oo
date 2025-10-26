@@ -24,18 +24,23 @@ from src.utils import copy_grid
 # ============================================================================
 
 
-def _validate_rectangular(Xp: list[list[int]]) -> None:
+def _validate_rectangular(Xp: list[list[int]], allow_empty: bool = True) -> None:
     """Raise ValueError if Xp not rectangular.
 
     Args:
         Xp: Grid to validate
+        allow_empty: If False, raise error for empty grid
 
     Raises:
-        ValueError: If any row has different length than first row
+        ValueError: If any row has different length than first row, or if empty when not allowed
     """
     if not Xp:
-        return  # Empty grid is valid
+        if not allow_empty:
+            raise ValueError("Cannot mirror empty grid")
+        return
     C = len(Xp[0])
+    if C == 0 and not allow_empty:
+        raise ValueError("Cannot mirror grid with zero columns")
     if not all(len(row) == C for row in Xp):
         raise ValueError("Grid must be rectangular")
 
@@ -241,3 +246,164 @@ def apply_identity(
 
     # Return deep copy (coords parameter ignored)
     return copy_grid(Xp)
+
+
+# ============================================================================
+# Action Kernels II — Mirror Operations (P5-02)
+# ============================================================================
+
+
+def apply_mirror_h(
+    Xp: list[list[int]],
+    coords: list[tuple[int, int]]
+) -> list[list[int]]:
+    """Return new grid with coords mirrored horizontally (row r → row R-1-r).
+
+    GLUE-safe: ALL reads from frozen Xp, writes to new Out.
+    Grid-global: Mirror axes defined by full grid dimensions R×C.
+
+    Args:
+        Xp: Rectangular grid (frozen base, guaranteed non-empty)
+        coords: List of (row, col) positions to mirror
+
+    Returns:
+        New grid Out where:
+        - Out[r][c] = Xp[R-1-r][c] for all (r, c) in coords
+        - Out[r][c] = Xp[r][c] otherwise (not in coords)
+
+    Raises:
+        ValueError: If Xp not rectangular, empty, or any coord out of bounds
+
+    Guarantees:
+        - Purity: Xp unchanged
+        - GLUE-safe: Reads ONLY from Xp (never from Out)
+        - Determinism: Coords processed in sorted row-major order
+        - Grid-global axes: R = len(Xp), mirror row r → row R-1-r
+        - FY exactness: Bit-for-bit reproducible
+
+    Examples:
+        # 3×3 grid, mirror top-left to bottom-left value
+        >>> Xp = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        >>> apply_mirror_h(Xp, [(0, 0)])
+        [[7, 2, 3], [4, 5, 6], [7, 8, 9]]  # Xp[0][0] = Xp[2][0] = 7
+
+        # Even grid (4×2)
+        >>> Xp = [[1, 2], [3, 4], [5, 6], [7, 8]]
+        >>> apply_mirror_h(Xp, [(0, 1), (3, 0)])
+        [[1, 8], [3, 4], [5, 6], [1, 8]]  # (0,1)→(3,1)=8, (3,0)→(0,0)=1
+
+        # 1×1 grid (edge case)
+        >>> Xp = [[5]]
+        >>> apply_mirror_h(Xp, [(0, 0)])
+        [[5]]  # r=0 mirrors to R-1-r = 1-1-0 = 0 (itself)
+
+    Mathematical Note:
+        Horizontal mirror flips across horizontal (east-west) axis.
+        Row r maps to row R-1-r using FULL GRID height R.
+        NOT bbox-relative, NOT patch-local.
+
+        Property: apply_mirror_h(apply_mirror_h(Xp, C), C) = Xp
+                  (involution for full-grid coords)
+
+    GLUE Safety:
+        Critical test: Two-sided coords including both (r, c) and (R-1-r, c).
+        Verifies that processing order does not affect result.
+    """
+    # Validate inputs
+    _validate_rectangular(Xp, allow_empty=False)
+    _validate_coords(Xp, coords)
+
+    # Get grid dimensions
+    R = len(Xp)
+    C = len(Xp[0])
+
+    # Create output as deep copy (ensures purity and GLUE safety)
+    Out = copy_grid(Xp)
+
+    # Process coords in sorted order for determinism
+    sorted_coords = sorted(coords)
+
+    # Apply horizontal mirror: row r → row R-1-r
+    # CRITICAL: Read from Xp only, never from Out (GLUE safety)
+    for (r, c) in sorted_coords:
+        Out[r][c] = Xp[R - 1 - r][c]  # Read from frozen Xp
+
+    return Out
+
+
+def apply_mirror_v(
+    Xp: list[list[int]],
+    coords: list[tuple[int, int]]
+) -> list[list[int]]:
+    """Return new grid with coords mirrored vertically (col c → col C-1-c).
+
+    GLUE-safe: ALL reads from frozen Xp, writes to new Out.
+    Grid-global: Mirror axes defined by full grid dimensions R×C.
+
+    Args:
+        Xp: Rectangular grid (frozen base, guaranteed non-empty)
+        coords: List of (row, col) positions to mirror
+
+    Returns:
+        New grid Out where:
+        - Out[r][c] = Xp[r][C-1-c] for all (r, c) in coords
+        - Out[r][c] = Xp[r][c] otherwise (not in coords)
+
+    Raises:
+        ValueError: If Xp not rectangular, empty, or any coord out of bounds
+
+    Guarantees:
+        - Purity: Xp unchanged
+        - GLUE-safe: Reads ONLY from Xp (never from Out)
+        - Determinism: Coords processed in sorted row-major order
+        - Grid-global axes: C = len(Xp[0]), mirror col c → col C-1-c
+        - FY exactness: Bit-for-bit reproducible
+
+    Examples:
+        # 3×3 grid, mirror top-right to top-left value
+        >>> Xp = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        >>> apply_mirror_v(Xp, [(0, 2)])
+        [[1, 2, 1], [4, 5, 6], [7, 8, 9]]  # Xp[0][2] = Xp[0][0] = 1
+
+        # Even grid (2×4)
+        >>> Xp = [[1, 2, 3, 4], [5, 6, 7, 8]]
+        >>> apply_mirror_v(Xp, [(0, 0), (1, 3)])
+        [[4, 2, 3, 4], [5, 6, 7, 5]]  # (0,0)→(0,3)=4, (1,3)→(1,0)=5
+
+        # 1×1 grid (edge case)
+        >>> Xp = [[5]]
+        >>> apply_mirror_v(Xp, [(0, 0)])
+        [[5]]  # c=0 mirrors to C-1-c = 1-1-0 = 0 (itself)
+
+    Mathematical Note:
+        Vertical mirror flips across vertical (north-south) axis.
+        Column c maps to column C-1-c using FULL GRID width C.
+        NOT bbox-relative, NOT patch-local.
+
+        Property: apply_mirror_v(apply_mirror_v(Xp, C), C) = Xp
+                  (involution for full-grid coords)
+
+    GLUE Safety:
+        Critical test: Two-sided coords including both (r, c) and (r, C-1-c).
+        Verifies that processing order does not affect result.
+    """
+    # Validate inputs
+    _validate_rectangular(Xp, allow_empty=False)
+    _validate_coords(Xp, coords)
+
+    # Get grid dimensions
+    R = len(Xp)
+    C = len(Xp[0])
+
+    # Create output as deep copy (ensures purity and GLUE safety)
+    Out = copy_grid(Xp)
+
+    # Process coords in sorted order for determinism
+    sorted_coords = sorted(coords)
+
+    # Apply vertical mirror: col c → col C-1-c
+    # CRITICAL: Read from Xp only, never from Out (GLUE safety)
+    for (r, c) in sorted_coords:
+        Out[r][c] = Xp[r][C - 1 - c]  # Read from frozen Xp
+
+    return Out
