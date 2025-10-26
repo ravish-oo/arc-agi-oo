@@ -3,11 +3,12 @@ Receipts Module for ARC AGI Solver.
 
 Generates proof-of-work receipts for PASS and UNSAT results.
 Every solver step must emit a receipt containing:
-- mode: "global" | "unsat"
-- solver: family name (if PASS)
+- mode: "global" | "phi_partition" | "unsat"
+- solver: family name (if PASS in Step-1)
+- chosen_candidate: P + MDL + summary (if PASS in Step-2)
 - task: lightweight task metadata
 - params: learned parameters (if available and JSON-serializable)
-- reason: why UNSAT (if UNSAT)
+- reason: why UNSAT (if UNSAT) or MDL selection explanation
 
 Receipts are deterministic, JSON-serializable, and hashable.
 
@@ -24,10 +25,17 @@ task_meta structure:
         "train_n": int,          # Number of training pairs
         "test_n": int            # Number of test inputs
     }
+
+Functions:
+    generate_receipt_global: Step-1 PASS receipt
+    generate_receipt_unsat: UNSAT receipt
+    generate_receipt_phi: Step-2 PASS receipt (Φ-mode)
+    receipt_stable_hash: Compute stable SHA-256 hash
 """
 
 import json
 import hashlib
+from src.mdl_selection import compute_mdl
 
 
 def generate_receipt_global(family, task_meta: dict) -> dict:
@@ -174,3 +182,165 @@ def receipt_stable_hash(receipt: dict) -> str:
     hash_digest = hashlib.sha256(json_bytes).hexdigest()
 
     return hash_digest
+
+
+def generate_receipt_phi(
+    P_desc: dict,
+    classes: dict[int, list[tuple[int, int, int]]],
+    actions_by_cid: dict[int, tuple[str, object | None]],
+    mdl_candidates: list[dict]
+) -> dict:
+    """
+    Generate Φ-mode receipt for Step-2 candidate selection.
+
+    Args:
+        P_desc: {"name": str, "index": int} - chosen P description
+        classes: {cid: [(train_idx, r, c), ...]} - chosen classes
+        actions_by_cid: {cid: (action_name, param_or_None)} - chosen actions
+        mdl_candidates: list of candidate dicts from solve_step2, each with:
+            {
+                "P": {"name": str, "index": int},
+                "mdl": {"num_classes": int, "num_action_types": int, "p_index": int, "hash": str},
+                ...
+            }
+
+    Returns:
+        dict with structure:
+        {
+            "mode": "phi_partition",
+            "chosen_candidate": {
+                "P": {"name": str, "index": int},
+                "mdl": {"num_classes": int, "num_action_types": int, "p_index": int, "hash": str},
+                "summary": {
+                    "num_classes": int,
+                    "num_action_types": int,
+                    "actions_histogram": {"action_name": count, ...}
+                },
+                "reason": "MDL: fewer classes ▸ fewer action types ▸ lower P index ▸ stable hash"
+            },
+            "mdl_candidates": [
+                {"P": {...}, "mdl": {...}, "summary": {...}},
+                ...
+            ]
+        }
+
+    Edge cases:
+        - Empty classes → num_classes=0, empty actions_histogram
+        - Single candidate → validates correctly
+        - Identity (index=-1) → accepted as valid
+
+    Invariants:
+        - Deterministic: same inputs → same receipt
+        - JSON-serializable: all fields are JSON-compatible
+        - Canonical ordering: mdl_candidates sorted by MDL tuple
+        - Validates chosen candidate is in mdl_candidates list
+
+    Raises:
+        ValueError: If P_desc missing "name" or "index" fields
+        ValueError: If P_desc["index"] < -1
+        ValueError: If mdl_candidates is empty
+        ValueError: If chosen candidate not found in mdl_candidates
+
+    Purity:
+        - Read-only on all inputs (no mutation)
+        - No timestamps, no randomness, no environment dependencies
+    """
+    # Validate P_desc
+    if "name" not in P_desc or "index" not in P_desc:
+        raise ValueError("P_desc must contain 'name' and 'index' fields")
+    if not isinstance(P_desc["index"], int) or P_desc["index"] < -1:
+        raise ValueError("P_desc['index'] must be >= -1 (Identity uses -1, families use 0+)")
+
+    # Validate mdl_candidates not empty
+    if not mdl_candidates:
+        raise ValueError("mdl_candidates must not be empty")
+
+    # Compute MDL for chosen candidate
+    mdl_tuple = compute_mdl(P_desc, classes, actions_by_cid)
+    num_classes, num_action_types, p_index, stable_hash = mdl_tuple
+
+    # Build actions histogram (count action names, not params)
+    actions_histogram = {}
+    for action_name, _ in actions_by_cid.values():
+        actions_histogram[action_name] = actions_histogram.get(action_name, 0) + 1
+
+    # Sort histogram by action name for determinism
+    actions_histogram = dict(sorted(actions_histogram.items()))
+
+    # Build chosen_candidate dict
+    chosen_candidate = {
+        "P": {
+            "name": P_desc["name"],
+            "index": P_desc["index"]
+        },
+        "mdl": {
+            "num_classes": num_classes,
+            "num_action_types": num_action_types,
+            "p_index": p_index,
+            "hash": stable_hash
+        },
+        "summary": {
+            "num_classes": num_classes,
+            "num_action_types": num_action_types,
+            "actions_histogram": actions_histogram
+        },
+        "reason": "MDL: fewer classes ▸ fewer action types ▸ lower P index ▸ stable hash"
+    }
+
+    # Sort mdl_candidates by MDL tuple (lexicographic order)
+    def mdl_key(cand):
+        mdl = cand["mdl"]
+        return (mdl["num_classes"], mdl["num_action_types"], mdl["p_index"], mdl["hash"])
+
+    sorted_candidates = sorted(mdl_candidates, key=mdl_key)
+
+    # Validate chosen candidate is in sorted list
+    chosen_mdl_tuple = (num_classes, num_action_types, p_index, stable_hash)
+    found = False
+    for cand in sorted_candidates:
+        cand_mdl = cand["mdl"]
+        cand_tuple = (cand_mdl["num_classes"], cand_mdl["num_action_types"],
+                      cand_mdl["p_index"], cand_mdl["hash"])
+        if cand_tuple == chosen_mdl_tuple:
+            found = True
+            break
+
+    if not found:
+        raise ValueError(f"Chosen candidate with MDL {chosen_mdl_tuple} not found in mdl_candidates")
+
+    # Build candidate entries for receipt (compact: P + mdl + summary only)
+    receipt_candidates = []
+    for cand in sorted_candidates:
+        # Build actions histogram for this candidate (if it has actions)
+        if "actions" in cand:
+            cand_histogram = {}
+            for action_name, _ in cand["actions"].values():
+                cand_histogram[action_name] = cand_histogram.get(action_name, 0) + 1
+            cand_histogram = dict(sorted(cand_histogram.items()))
+        else:
+            cand_histogram = {}
+
+        receipt_candidates.append({
+            "P": {
+                "name": cand["P"]["name"],
+                "index": cand["P"]["index"]
+            },
+            "mdl": {
+                "num_classes": cand["mdl"]["num_classes"],
+                "num_action_types": cand["mdl"]["num_action_types"],
+                "p_index": cand["mdl"]["p_index"],
+                "hash": cand["mdl"]["hash"]
+            },
+            "summary": {
+                "num_classes": cand["mdl"]["num_classes"],
+                "num_action_types": cand["mdl"]["num_action_types"],
+                "actions_histogram": cand_histogram
+            }
+        })
+
+    # Build and return receipt
+    return {
+        "mode": "phi_partition",
+        "chosen_candidate": chosen_candidate,
+        "mdl_candidates": receipt_candidates
+    }
