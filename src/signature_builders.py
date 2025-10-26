@@ -10,6 +10,7 @@ Phase 4 Work Orders:
 - P4-02: NPS Bands (row_band_masks, col_band_masks)
 - P4-03: Local Content (is_color_mask, touching_color_mask)
 - P4-04: Component IDs (component_id_table)
+- P4-05: Patch Canonicalizer Core (patch_canonical_key, patch_canonical_rep, is_valid_patch_size)
 
 Public API:
 - parity_mask(g) → (M0, M1)
@@ -20,6 +21,9 @@ Public API:
 - is_color_mask(g, color) → M (0/1 mask)
 - touching_color_mask(g, color) → T (0/1 mask, 4-neighbor dilation)
 - component_id_table(g) → (id_grid, meta) (8-connected, deterministic IDs)
+- is_valid_patch_size(n) → bool (True iff n is odd and >= 1)
+- patch_canonical_key(p) → (R, C, values_tuple) (OFA + D8 minimal key)
+- patch_canonical_rep(p) → canonical patch (OFA + D8 representative)
 
 All masks are 0/1 grids with shape(mask) == shape(g), forming disjoint partitions.
 
@@ -30,6 +34,11 @@ Invariants (per primary-anchor.md):
 """
 
 from src.components import boundaries_by_any_change, components_by_color
+from src.canonicalization import (
+    ofa_normalize_patch_colors,
+    apply_isometry,
+    all_isometries,
+)
 
 
 def _validate_rectangular(g: list[list[int]]) -> None:
@@ -634,3 +643,194 @@ def component_id_table(
         )
 
     return (id_grid, meta)
+
+
+def is_valid_patch_size(n: int) -> bool:
+    """
+    Check if n is a valid patch size (odd, positive).
+
+    Patch sizes must be odd positive integers (1, 3, 5, 7, 9, ...).
+    This ensures patches have a well-defined center pixel.
+
+    Args:
+        n: Patch size to validate
+
+    Returns:
+        True if n is odd and >= 1, False otherwise
+
+    Examples:
+        >>> is_valid_patch_size(1)
+        True
+
+        >>> is_valid_patch_size(5)
+        True
+
+        >>> is_valid_patch_size(0)
+        False
+
+        >>> is_valid_patch_size(2)
+        False
+
+        >>> is_valid_patch_size(-1)
+        False
+    """
+    return isinstance(n, int) and n >= 1 and n % 2 == 1
+
+
+def _grid_to_key(g: list[list[int]]) -> tuple[int, int, tuple[int, ...]]:
+    """
+    Helper: Convert grid to canonical key format (R, C, values_tuple).
+
+    Args:
+        g: Grid (list of lists of ints)
+
+    Returns:
+        Tuple (R, C, values_tuple) where:
+        - R = number of rows
+        - C = number of columns
+        - values_tuple = flattened row-major values as tuple
+    """
+    if not g:
+        return (0, 0, ())
+
+    R = len(g)
+    C = len(g[0]) if g else 0
+
+    # Flatten row-major
+    values = []
+    for row in g:
+        values.extend(row)
+
+    return (R, C, tuple(values))
+
+
+def patch_canonical_key(p: list[list[int]]) -> tuple[int, int, tuple[int, ...]]:
+    """
+    Compute canonical key for patch under OFA + D8.
+
+    Returns (R, C, values_tuple) of the OFA-normalized, D8-minimal image,
+    where the key is chosen by:
+    1. Apply OFA (Order of First Appearance) normalization locally to patch
+    2. Try all 8 D8 isometries (identity, rotations, flips)
+    3. Convert each to (R, C, values_tuple) format
+    4. Return lexicographically minimal key (shape-first ordering)
+    5. Tie-break by earliest σ from all_isometries() order
+
+    Properties:
+    - Input-only: depends on patch structure (Φ.3 stability)
+    - OFA locality: palette permutations produce identical keys
+    - D8 minimality: key is minimal over all 8 isometries
+    - Deterministic: stable ordering, tie-break by σ order
+    - Purity: input patch unchanged
+
+    Args:
+        p: Input patch (list of lists of ints), must be square
+
+    Returns:
+        Tuple (R, C, values_tuple) representing the canonical key
+
+    Raises:
+        ValueError: If p is empty, non-square, or ragged
+
+    Examples:
+        >>> patch_canonical_key([[5]])
+        (1, 1, (0,))
+
+        >>> patch_canonical_key([[3, 3], [3, 3]])
+        (2, 2, (0, 0, 0, 0))
+    """
+    _validate_rectangular(p)
+
+    if not p:
+        raise ValueError("Patch cannot be empty")
+
+    h = len(p)
+    w = len(p[0])
+
+    if h != w:
+        raise ValueError(f"Patch must be square, got {h}x{w}")
+
+    # Apply OFA normalization locally
+    ofa_patch = ofa_normalize_patch_colors(p)
+
+    # Try all D8 isometries and find minimal key
+    min_key = None
+
+    for sigma in all_isometries():
+        # Apply isometry
+        transformed = apply_isometry(ofa_patch, sigma)
+
+        # Convert to key format
+        key = _grid_to_key(transformed)
+
+        # Track minimum (tuple comparison is lexicographic)
+        # Use < (not <=) for tie-breaking by earliest σ
+        if min_key is None or key < min_key:
+            min_key = key
+
+    return min_key
+
+
+def patch_canonical_rep(p: list[list[int]]) -> list[list[int]]:
+    """
+    Return OFA-normalized canonical representative achieving patch_canonical_key(p).
+
+    Returns the actual patch (2D grid) that produces the minimal canonical key.
+    This is the OFA-normalized patch transformed by the D8 isometry σ that
+    achieves the lexicographically minimal key.
+
+    Properties:
+    - Input-only: depends on patch structure (Φ.3 stability)
+    - OFA locality: palette permutations produce identical reps
+    - D8 minimality: rep achieves minimal key over all 8 isometries
+    - Idempotence: patch_canonical_rep(patch_canonical_rep(p)) == patch_canonical_rep(p)
+    - Purity: input patch unchanged (newly allocated result)
+
+    Args:
+        p: Input patch (list of lists of ints), must be square
+
+    Returns:
+        Canonical representative patch (2D grid, newly allocated)
+
+    Raises:
+        ValueError: If p is empty, non-square, or ragged
+
+    Examples:
+        >>> patch_canonical_rep([[5]])
+        [[0]]
+
+        >>> patch_canonical_rep([[3, 3], [3, 3]])
+        [[0, 0], [0, 0]]
+    """
+    _validate_rectangular(p)
+
+    if not p:
+        raise ValueError("Patch cannot be empty")
+
+    h = len(p)
+    w = len(p[0])
+
+    if h != w:
+        raise ValueError(f"Patch must be square, got {h}x{w}")
+
+    # Apply OFA normalization locally
+    ofa_patch = ofa_normalize_patch_colors(p)
+
+    # Try all D8 isometries and find the one giving minimal key
+    min_key = None
+    min_rep = None
+
+    for sigma in all_isometries():
+        # Apply isometry
+        transformed = apply_isometry(ofa_patch, sigma)
+
+        # Convert to key format
+        key = _grid_to_key(transformed)
+
+        # Track minimum
+        # Use < (not <=) for tie-breaking by earliest σ
+        if min_key is None or key < min_key:
+            min_key = key
+            min_rep = transformed
+
+    return min_rep
