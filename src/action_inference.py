@@ -407,3 +407,173 @@ def apply_mirror_v(
         Out[r][c] = Xp[r][C - 1 - c]  # Read from frozen Xp
 
     return Out
+
+
+# ============================================================================
+# Action Kernels III — Class Verifier (P5-03)
+# ============================================================================
+
+
+def verify_action_on_class(
+    action: tuple[str, object | None],
+    items: list[dict],
+    class_coords: list[tuple[int, int, int]]
+) -> bool:
+    """Verify if given action matches ALL pixels of this class across ALL training pairs.
+
+    FY Equality: Returns True iff applying the action to class pixels in Xp yields
+    exact match with Y on those pixels for EVERY training pair.
+
+    Args:
+        action: Action tuple ("name", param) where:
+            - name ∈ {"set_color", "mirror_h", "mirror_v", "keep_nonzero", "identity"}
+            - param: color ∈ [0..9] for "set_color", None for others
+        items: List of training pair dicts, each with keys:
+            - "Xp": Rectangular grid (frozen base)
+            - "Y": Rectangular grid (target)
+        class_coords: List of (i, r, c) triples indicating class pixels
+            - i: train index
+            - r, c: pixel coordinates within train i
+
+    Returns:
+        True iff action satisfies FY equality on class pixels for all trains
+        False otherwise (including validation failures)
+
+    Validation (raises ValueError):
+        - Action tuple format: must be (str, param)
+        - Action name must be in valid set
+        - Color must be in [0..9] for set_color
+        - All Xp and Y must be rectangular
+        - All coords must be in bounds
+
+    Edge Cases:
+        - Empty class_coords → True (vacuous)
+        - Some train i has no coords → skip that train (vacuous for i)
+        - Duplicates in class_coords → deterministic (sorted coords)
+
+    Guarantees:
+        - FY exactness: Bit-for-bit equality (no tolerance)
+        - GLUE-safe: Uses existing kernels (read from frozen Xp only)
+        - Determinism: Sorted coords per train, stable boolean
+        - Purity: No mutation of inputs
+
+    Examples:
+        # set_color pass (all class pixels in Y equal the color)
+        >>> action = ("set_color", 5)
+        >>> items = [{"Xp": [[1, 2]], "Y": [[5, 2]]}]
+        >>> class_coords = [(0, 0, 0)]  # Train 0, pixel (0, 0)
+        >>> verify_action_on_class(action, items, class_coords)
+        True
+
+        # set_color fail (mismatch in Y)
+        >>> items = [{"Xp": [[1, 2]], "Y": [[3, 2]]}]  # Y has 3, not 5
+        >>> verify_action_on_class(action, items, class_coords)
+        False
+
+        # mirror_h pass
+        >>> action = ("mirror_h", None)
+        >>> items = [{"Xp": [[1, 2], [3, 4]], "Y": [[3, 2], [3, 4]]}]
+        >>> class_coords = [(0, 0, 0)]  # Top-left mirrors to bottom-left
+        >>> verify_action_on_class(action, items, class_coords)
+        True  # Y[0][0] = 3 = Xp[1][0]
+
+        # Empty coords (vacuous)
+        >>> verify_action_on_class(("identity", None), [], [])
+        True
+
+    Mathematical Note:
+        This implements the FY verification step from spec.md.
+        For a Φ-class with signature σ, verify that action A_σ
+        produces exact match with Y on all pixels where Φ(x) = σ.
+
+        This is the foundation for action inference (P5-04), which
+        will try each action in order until one satisfies FY.
+    """
+    # Validate action tuple format
+    if not isinstance(action, tuple) or len(action) != 2:
+        raise ValueError(f"Action must be a 2-tuple (name, param), got: {action}")
+
+    action_name, param = action
+
+    # Validate action name
+    valid_actions = {"set_color", "mirror_h", "mirror_v", "keep_nonzero", "identity"}
+    if action_name not in valid_actions:
+        raise ValueError(
+            f"Invalid action name '{action_name}'. Must be one of: {valid_actions}"
+        )
+
+    # Validate parameter for set_color
+    if action_name == "set_color":
+        if param is None:
+            raise ValueError("set_color requires a color parameter (int in [0..9])")
+        if not isinstance(param, int) or not (0 <= param <= 9):
+            raise ValueError(f"set_color color must be int in [0..9], got: {param}")
+    else:
+        if param is not None:
+            raise ValueError(
+                f"Action '{action_name}' requires param=None, got: {param}"
+            )
+
+    # Empty class_coords → vacuous truth
+    if not class_coords:
+        return True
+
+    # Group coords by train index
+    coords_by_train: dict[int, list[tuple[int, int]]] = {}
+    for (i, r, c) in class_coords:
+        if i not in coords_by_train:
+            coords_by_train[i] = []
+        coords_by_train[i].append((r, c))
+
+    # Verify each train
+    for i in sorted(coords_by_train.keys()):
+        # Skip if train index out of range
+        if i < 0 or i >= len(items):
+            raise ValueError(
+                f"Train index {i} out of range for {len(items)} training pairs"
+            )
+
+        item = items[i]
+        Xp = item["Xp"]
+        Y = item["Y"]
+
+        # Validate grids
+        _validate_rectangular(Xp, allow_empty=False)
+        _validate_rectangular(Y, allow_empty=False)
+
+        # Check shape compatibility
+        if len(Xp) != len(Y) or (Xp and len(Xp[0]) != len(Y[0])):
+            raise ValueError(
+                f"Train {i}: Xp and Y must have same shape. "
+                f"Xp: {len(Xp)}×{len(Xp[0]) if Xp else 0}, "
+                f"Y: {len(Y)}×{len(Y[0]) if Y else 0}"
+            )
+
+        # Get coords for this train
+        S_i = coords_by_train[i]
+
+        # Validate coords for this train
+        _validate_coords(Xp, S_i)
+
+        # Apply action to Xp with coords S_i
+        if action_name == "set_color":
+            Out = apply_set_color(Xp, S_i, param)
+        elif action_name == "mirror_h":
+            Out = apply_mirror_h(Xp, S_i)
+        elif action_name == "mirror_v":
+            Out = apply_mirror_v(Xp, S_i)
+        elif action_name == "keep_nonzero":
+            Out = apply_keep_nonzero(Xp, S_i)
+        elif action_name == "identity":
+            Out = apply_identity(Xp, S_i)
+        else:
+            # Should never reach here (already validated)
+            raise ValueError(f"Unknown action: {action_name}")
+
+        # Check FY equality: Out[r][c] == Y[r][c] for all (r, c) in S_i
+        for (r, c) in S_i:
+            if Out[r][c] != Y[r][c]:
+                return False  # Mismatch found
+
+    # All trains satisfy FY equality on class pixels
+    return True

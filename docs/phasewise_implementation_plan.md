@@ -466,7 +466,7 @@ pytest tests/test_actions.py  # All action inference tests pass
 Here’s the Phase-5 WO lineup (titles only), each ≤500-LOC and dependency-clean within P5:
 
 * **P5-01 — Action Kernels I: apply_set_color, apply_keep_nonzero, apply_identity** ✅ COMPLETE
-* **P5-02 — Action Kernels II: apply_mirror_h, apply_mirror_v (pure, deterministic)**
+* **P5-02 — Action Kernels II: apply_mirror_h, apply_mirror_v (pure, deterministic)** ✅ COMPLETE
 * **P5-03 — Class Verifier: verify_action_on_class (FY across all trains)**
 * **P5-04 — Inference Core: infer_action_for_class (ordered try, unified params, deterministic)**
 * **P5-05 — Action Test Suite: synthetic fixtures, purity checks, edge cases**
