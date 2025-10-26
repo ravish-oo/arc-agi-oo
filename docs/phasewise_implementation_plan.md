@@ -621,7 +621,7 @@ Here’s the Phase-7 lineup (titles only), each ≤500-LOC and self-contained (n
 * **P7-01 — MDL Primitives:** `hash_candidate`, `compute_mdl` (|classes|, |action_types|, p_index, stable hash)  ✅ COMPLETE
 * **P7-02 — Candidate-for-P Builder:** shape-safety, apply P to trains, Φ-partition, per-class action inference, GLUE verify → return candidate or None ✅ COMPLETE
 * **P7-03 — Step-2 Solver Core:** loop over **{Identity} ∪ GLOBAL_MENU**, collect all passing candidates, pick best by MDL, apply to tests ✅ COMPLETE
-* **P7-04 — Receipts (Φ mode):** `generate_receipt_phi(P, classes, actions, mdl_candidates)` (include chosen candidate + reasons) 
+* **P7-04 — Receipts (Φ mode):** `generate_receipt_phi(P, classes, actions, mdl_candidates)` (include chosen candidate + reasons) ✅ COMPLETE
 * **P7-05 — Coverage Meter Update:** add Step-2 run and delta vs Step-1 in `tests/measure_coverage.py` 
 * **P7-06 — Step-2 CLI Runner:** `src/solver_step2.py` entrypoint (`--task`, `--task-id`, deterministic stdout) 
 ---

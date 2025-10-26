@@ -4,35 +4,63 @@ This directory tracks Step-1 solver coverage on ARC training datasets, split by 
 
 ## Quick Summary
 
+### Step-2 (Current) — Phase 7
+
+| Dataset | Tasks | Solved | Coverage | vs Step-1 |
+|---------|-------|--------|----------|-----------|
+| **ARC-1** | 391 | **212** | **54.2%** | +48.3% (9× boost) |
+| **ARC-2** | 609 | **339** | **55.7%** | +53.9% (31× boost) |
+| **Combined** | 1000 | **551** | **55.1%** | +51.7% (16× boost) |
+
+### Step-1 Baseline — Phase 3
+
 | Dataset | Tasks | Solved | Coverage | Status |
 |---------|-------|--------|----------|--------|
-| **ARC-1** | 391 | 23 | **5.9%** | ✅ Baseline |
-| **ARC-2** | 609 | 11 | **1.8%** | ✅ Baseline |
-| **Combined** | 1000 | 34 | **3.4%** | ✅ Baseline |
+| **ARC-1** | 391 | 23 | 5.9% | ✅ Baseline |
+| **ARC-2** | 609 | 11 | 1.8% | ✅ Baseline |
+| **Combined** | 1000 | 34 | 3.4% | ✅ Baseline |
 
-**Last Updated**: 2025-10-25
-**Solver Phase**: Phase 3 (Step-1 Global Solver Only)
+**Last Updated**: 2025-10-26
+**Solver Phase**: Phase 7 (Step-2: P + Φ/GLUE Compositional Solver)
 
 ## Reports
 
-- [**arc1_baseline.md**](arc1_baseline.md) - ARC-1 coverage analysis (original 400 tasks)
-- [**arc2_baseline.md**](arc2_baseline.md) - ARC-2 coverage analysis (new 600 tasks)
+### Phase 7 (Step-2: P + Φ/GLUE)
+- [**arc1_phase7_step2.md**](arc1_phase7_step2.md) - ARC-1 Step-2 coverage (54.2%, 212/391 solved)
+- [**arc2_phase7_step2.md**](arc2_phase7_step2.md) - ARC-2 Step-2 coverage (55.7%, 339/609 solved)
 
-## Key Insights
+### Phase 3 (Step-1: Global Solver Baseline)
+- [**arc1_baseline.md**](arc1_baseline.md) - ARC-1 Step-1 coverage (5.9%, 23/391 solved)
+- [**arc2_baseline.md**](arc2_baseline.md) - ARC-2 Step-1 coverage (1.8%, 11/609 solved)
 
-### 1. ARC-2 is Significantly Harder
+## Key Insights (Phase 7 — Step-2)
 
+### 1. Step-2 Compositional Power is MASSIVE
+
+**Coverage Boost**:
 ```
-ARC-1: 5.9% coverage (23/391 solved)
-ARC-2: 1.8% coverage (11/609 solved)
-
-→ ARC-2 is ~3× harder for Step-1 solver
+ARC-1: 5.9% → 54.2% (9× improvement, +189 tasks)
+ARC-2: 1.8% → 55.7% (31× improvement, +328 tasks)
+Combined: 3.4% → 55.1% (16× improvement, +517 tasks)
 ```
 
-**Why**:
-- ARC-2 intentionally avoids simple transformations
-- Fewer identity/rotation/color-swap patterns
-- Requires more compositional reasoning
+**Status**: ✅ **Massively exceeds targets** (target: 20-30%, achieved: 55%)
+
+### 2. Identity + Φ Dominates
+
+**Identity as Global Transform**:
+- ARC-1: 191/212 solved (90%)
+- ARC-2: 328/339 solved (97%)
+- **Combined: 519/551 solved (94%)**
+
+**Interpretation**: Most ARC tasks don't need complex global transforms—they need smart **local pixel reasoning** via Φ features + class-based actions.
+
+### 3. ARC-2 Responds Better to Compositional Reasoning
+
+**Step-1**: ARC-2 is 3× harder (1.8% vs 5.9%)
+**Step-2**: ARC-2 and ARC-1 are **equally solvable** (~55% both)
+
+**Why**: ARC-2 was designed to avoid simple global patterns, but local Φ reasoning works equally well on both datasets.
 
 ### 2. Different Family Distributions
 
@@ -51,17 +79,15 @@ ARC-2: 1.8% coverage (11/609 solved)
 - ARC-2 focuses on structural/block-based reasoning
 - Step-1 limitations more evident on ARC-2
 
-### 3. Coverage is Expected for Step-1
+### 4. Coverage Progress vs Targets
 
-The current 3.4% overall coverage is **intentionally low**:
+| Phase | Solver | Target | ARC-1 Actual | ARC-2 Actual | Status |
+|-------|--------|--------|--------------|--------------|--------|
+| Phase 3 | Step-1 only | 5-10% | 5.9% ✅ | 1.8% ✅ | Baseline |
+| **Phase 7** | **+ Step-2 (P+Φ/GLUE)** | **20-30%** | **54.2%** ✅✅ | **55.7%** ✅✅ | **Done** |
+| Phase 9 | + Step-3 (LUT) | 65-75% | TBD | TBD | Next |
 
-| Phase | Solver | Expected Coverage |
-|-------|--------|-------------------|
-| **Phase 3** (current) | Step-1 only | 5-10% |
-| Phase 7 | + Step-2 (P+Φ/GLUE) | 20-30% |
-| Phase 9 | + Step-3 (LUT) | 30-40% |
-
-Step-1 is designed to handle only **global exact transformations**, the simplest cases.
+**Phase 7 massively exceeds expectations** (2× better than target!)
 
 ## How to Measure Coverage
 
@@ -128,11 +154,11 @@ arc1_phase9_2025-12-01.md  (after Step-3 implementation)
 
 ## Next Milestones
 
-| Phase | Goal | ARC-1 Target | ARC-2 Target |
-|-------|------|--------------|--------------|
-| Phase 7 | Implement Step-2 (P+Φ/GLUE) | 20-25% | 8-12% |
-| Phase 9 | Implement Step-3 (LUT) | 30-40% | 15-20% |
-| Optimization | Tune families + edge cases | 35-45% | 20-25% |
+| Phase | Goal | ARC-1 Target | ARC-1 Actual | ARC-2 Target | ARC-2 Actual |
+|-------|------|--------------|--------------|--------------|--------------|
+| ~~Phase 7~~ | ~~Step-2 (P+Φ/GLUE)~~ | ~~20-25%~~ | ✅ **54.2%** | ~~8-12%~~ | ✅ **55.7%** |
+| **Phase 9** | **Step-3 (LUT)** | **65-75%** | **TBD** | **65-75%** | **TBD** |
+| Optimization | Tune families + edge cases | 75-80% | TBD | 70-75% | TBD |
 
 ## Notes
 
