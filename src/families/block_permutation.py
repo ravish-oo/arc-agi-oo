@@ -154,6 +154,10 @@ class BlockPermutationFamily:
         if perm is None:
             return None  # Could not build complete permutation
 
+        # Store tile grid dimensions from first pair (Bug B3 fix)
+        nrows_first = len(TX)
+        ncols_first = len(TX[0]) if TX else 0
+
         # Verify on ALL training pairs
         for pair in train_pairs:
             X = pair["input"]
@@ -168,6 +172,12 @@ class BlockPermutationFamily:
             # Check dimensions match block size
             if hx % kH != 0 or wx % kW != 0:
                 return None
+
+            # Bug B3 fix: Check tile grid dimensions match first pair
+            nrows_current = hx // kH
+            ncols_current = wx // kW
+            if nrows_current != nrows_first or ncols_current != ncols_first:
+                return None  # Tile grid size mismatch
 
             # Apply permutation and check
             Y_pred = self._apply_with_params(X, kH, kW, perm)

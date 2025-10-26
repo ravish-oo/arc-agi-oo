@@ -22,26 +22,36 @@ from collections import defaultdict
 def build_candidate_for_P(
     task: dict,
     p_desc: dict,
-    apply_p_fn: "callable[[list[list[int]]], list[list[int]]]"
+    apply_p_fn: "callable[[list[list[int]]], list[list[int]]]",
+    schema: str = 'S3'
 ) -> dict | None:
     """
-    Evaluate ONE global transform P on ONE task for Step-2 solving.
+    Evaluate ONE global transform P with ONE schema on ONE task for Step-2 solving.
+
+    Schema Lattice (MDL Minimality):
+    - S0: Base features only (no patchkeys) - COARSEST, minimal discrimination
+    - S1: S0 + patchkey_r2 (5×5 local context)
+    - S2: S0 + patchkey_r3 (7×7 local context)
+    - S3: S0 + patchkey_r4 (9×9 local context) - FINEST, maximal discrimination
 
     Args:
         task: {"train": [(X, Y), ...], "test": [...], ...} (extra keys ignored)
         p_desc: {"name": str, "index": int} describing the global family
         apply_p_fn: Pure transform function (X: grid) -> Xp: grid
+        schema: Schema level ('S0', 'S1', 'S2', 'S3') - controls patchkey inclusion
 
     Returns:
         Canonical candidate dict if all checks pass:
         {
             "P": p_desc,
+            "schema": str,  # Schema level used ('S0', 'S1', 'S2', 'S3')
             "classes": {cid: [(train_idx, row, col), ...], ...},
             "actions": {cid: (action_name, param_or_None), ...},
             "mdl": {
                 "num_classes": int,
                 "num_action_types": int,
                 "p_index": int,
+                "schema_cost": int,  # Schema cost (0=S0, 1=S1, 2=S2, 3=S3)
                 "hash": str
             }
         }
@@ -96,8 +106,9 @@ def build_candidate_for_P(
 
     # Step 2: Build Φ partition on residual pixels
     # (Φ features computed ONLY from Xp, Y used only for residual filtering)
+    # Schema determines which patchkeys are included in signatures
     try:
-        items, classes = build_phi_partition(tr_pairs_afterP)
+        items, classes = build_phi_partition(tr_pairs_afterP, schema)
     except Exception:
         # Partition build failed (e.g., ragged grids)
         return None
@@ -139,15 +150,22 @@ def build_candidate_for_P(
 
     num_classes, num_action_types, p_index, stable_hash = mdl_tuple
 
+    # Compute schema cost (0=S0, 1=S1, 2=S2, 3=S3)
+    # S0 is cheapest (fewest features), S3 is costliest (most features)
+    schema_cost_map = {'S0': 0, 'S1': 1, 'S2': 2, 'S3': 3}
+    schema_cost = schema_cost_map.get(schema, 3)  # Default to S3 cost if invalid
+
     # Step 6: Return canonical candidate dict
     return {
         "P": p_desc,
+        "schema": schema,  # Store schema for test-time use
         "classes": classes,
         "actions": actions_by_cid,
         "mdl": {
             "num_classes": num_classes,
             "num_action_types": num_action_types,
             "p_index": p_index,
+            "schema_cost": schema_cost,  # Schema cost for MDL ranking
             "hash": stable_hash
         }
     }
@@ -248,8 +266,9 @@ def _apply_candidate_to_tests(
     if not test_inputs:
         return []
 
-    # Get apply_fn from chosen candidate
+    # Get apply_fn and schema from chosen candidate
     apply_p_fn = chosen["P"]["apply_fn"]
+    schema = chosen["schema"]  # Use same schema as training
     classes = chosen["classes"]
     actions_by_cid = chosen["actions"]
 
@@ -258,10 +277,10 @@ def _apply_candidate_to_tests(
         return [apply_p_fn(X_test) for X_test in test_inputs]
 
     # Build sig_to_cid map from training data
-    # Re-apply P to training to get items and rebuild signatures
+    # Re-apply P to training to get items and rebuild signatures with same schema
     train_pairs = [(pair["input"], pair["output"]) for pair in task["train"]]
     tr_pairs_afterP = [(apply_p_fn(X), Y) for X, Y in train_pairs]
-    items, _ = build_phi_partition(tr_pairs_afterP)
+    items, _ = build_phi_partition(tr_pairs_afterP, schema)  # Use stored schema
 
     # Build signature → class_id map
     sig_to_cid = {}
@@ -269,7 +288,7 @@ def _apply_candidate_to_tests(
         # Pick first coord from this class to get signature
         if coords:
             train_idx, r, c = coords[0]
-            sig = _build_signature(items[train_idx]["feats"], r, c, items[train_idx]["Xp"])
+            sig = _build_signature(items[train_idx]["feats"], r, c, items[train_idx]["Xp"], schema)
             sig_to_cid[sig] = class_id
 
     # Apply to each test input
@@ -278,16 +297,16 @@ def _apply_candidate_to_tests(
         # Apply P
         Xp_test = apply_p_fn(X_test)
 
-        # Build Φ signatures for test
-        feats_test = phi_signature_tables(Xp_test)
+        # Build Φ signatures for test with same schema as training
+        feats_test = phi_signature_tables(Xp_test, schema)
 
         # Group pixels by class_id via signature matching
         pixels_by_cid = defaultdict(list)
         R, C = dims(Xp_test)
         for r in range(R):
             for c in range(C):
-                # Build signature for this test pixel
-                sig = _build_signature(feats_test, r, c, Xp_test)
+                # Build signature for this test pixel with same schema
+                sig = _build_signature(feats_test, r, c, Xp_test, schema)
 
                 # Lookup in training signature map
                 if sig in sig_to_cid:
@@ -375,48 +394,54 @@ def solve_step2(task: dict) -> dict:
     # Enumerate all P
     P_registry = _enumerate_P_registry()
 
-    # Collect all passing candidates
+    # Schema lattice for MDL minimality (coarse-to-fine)
+    # S0: Fastest to compute, minimal discrimination
+    # S3: Slowest to compute, maximal discrimination
+    SCHEMAS = ['S0', 'S1', 'S2', 'S3']
+
+    # Collect all passing candidates (all P × all schemas)
     candidates = []
 
-    for p_entry in P_registry:
-        p_desc = {
-            "name": p_entry["name"],
-            "index": p_entry["index"]
-        }
+    for schema in SCHEMAS:
+        for p_entry in P_registry:
+            p_desc = {
+                "name": p_entry["name"],
+                "index": p_entry["index"]
+            }
 
-        # Get apply function (fit family if needed)
-        if p_entry["family_class"] is None:
-            # Identity: use lambda
-            apply_p_fn = lambda X: copy_grid(X)
-        else:
-            # Family: instantiate and fit
-            family_class = p_entry["family_class"]
-            instance = family_class()
+            # Get apply function (fit family if needed)
+            if p_entry["family_class"] is None:
+                # Identity: use lambda
+                apply_p_fn = lambda X: copy_grid(X)
+            else:
+                # Family: instantiate and fit
+                family_class = p_entry["family_class"]
+                instance = family_class()
 
-            # Fit on training data (expects list of dicts with "input" and "output")
-            fit_success = instance.fit(train_data)
-            if not fit_success:
-                # Fit failed, skip this P
+                # Fit on training data (expects list of dicts with "input" and "output")
+                fit_success = instance.fit(train_data)
+                if not fit_success:
+                    # Fit failed, skip this P
+                    continue
+
+                # Use instance.apply as the transform function
+                apply_p_fn = instance.apply
+
+            # Convert train to expected format for build_candidate_for_P
+            train_pairs = [(pair["input"], pair["output"]) for pair in train_data]
+            task_for_candidate = {**task, "train": train_pairs}
+
+            # Try to build candidate for this (P, schema) combination
+            try:
+                candidate = build_candidate_for_P(task_for_candidate, p_desc, apply_p_fn, schema)
+            except Exception:
+                # Candidate build failed, skip this (P, schema)
                 continue
 
-            # Use instance.apply as the transform function
-            apply_p_fn = instance.apply
-
-        # Convert train to expected format for build_candidate_for_P
-        train_pairs = [(pair["input"], pair["output"]) for pair in train_data]
-        task_for_candidate = {**task, "train": train_pairs}
-
-        # Try to build candidate for this P
-        try:
-            candidate = build_candidate_for_P(task_for_candidate, p_desc, apply_p_fn)
-        except Exception:
-            # Candidate build failed, skip this P
-            continue
-
-        if candidate is not None:
-            # Add apply_fn to candidate for test application
-            candidate["P"]["apply_fn"] = apply_p_fn
-            candidates.append(candidate)
+            if candidate is not None:
+                # Add apply_fn to candidate for test application
+                candidate["P"]["apply_fn"] = apply_p_fn
+                candidates.append(candidate)
 
     # If no candidates pass, return UNSAT
     if not candidates:
@@ -427,10 +452,18 @@ def solve_step2(task: dict) -> dict:
         }
 
     # Sort candidates by MDL tuple (lexicographic order)
-    # MDL tuple: (num_classes, num_action_types, p_index, stable_hash)
+    # MDL tuple with schema lattice:
+    # (schema_cost, num_classes, num_action_types, p_index, stable_hash)
+    # Prefer cheaper schemas (S0=0 < S1=1 < S2=2 < S3=3) for MDL minimality
     def mdl_key(c):
         mdl = c["mdl"]
-        return (mdl["num_classes"], mdl["num_action_types"], mdl["p_index"], mdl["hash"])
+        return (
+            mdl["schema_cost"],       # Primary: prefer coarser schemas (S0 first)
+            mdl["num_classes"],       # Secondary: fewer classes better
+            mdl["num_action_types"],  # Tertiary: fewer action types better
+            mdl["p_index"],           # Quaternary: earlier P in registry
+            mdl["hash"]               # Quinary: deterministic tie-breaking
+        )
 
     candidates.sort(key=mdl_key)
 

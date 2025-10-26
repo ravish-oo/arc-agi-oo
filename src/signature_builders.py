@@ -1254,16 +1254,22 @@ def component_aspect_bucket_table(
     return aspect_table
 
 
-def phi_signature_tables(X: list[list[int]]) -> dict:
+def phi_signature_tables(X: list[list[int]], schema: str = 'S3') -> dict:
     """
     Aggregate ALL Φ features (P4-01 through P4-06) into single dict.
+
+    Schema Lattice (MDL Minimality):
+    - S0: Base features only (no patchkeys) - COARSEST, minimal discrimination
+    - S1: S0 + patchkey_r2 (5×5 local context)
+    - S2: S0 + patchkey_r3 (7×7 local context)
+    - S3: S0 + patchkey_r4 (9×9 local context) - FINEST, maximal discrimination
 
     Returns a comprehensive signature dict containing:
     - index: Parity and modulo predicates (row/col mod k for k∈{2,3})
     - nps: Non-periodic segmentation bands (row/col)
     - local: Color masks and touching masks for ALL colors 0-9
     - components: Component ID table with metadata
-    - patchkeys: Canonical patch keys for radii r∈{2,3,4}
+    - patchkeys: Canonical patch keys conditionally based on schema
 
     Properties:
     - Φ.3 (Stability): Input-only, no Y dependencies
@@ -1274,6 +1280,7 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
 
     Args:
         X: Input grid (list of lists of ints)
+        schema: Schema level ('S0', 'S1', 'S2', 'S3') - default 'S3' for backward compatibility
 
     Returns:
         Dict with fixed key order ["index", "nps", "local", "components", "patchkeys"]:
@@ -1348,10 +1355,23 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
     # P4-04: Component IDs
     id_grid, meta = component_id_table(X)
 
-    # P4-06: Patchkey Tables
-    patchkey_r2 = patchkey_table(X, 2)
-    patchkey_r3 = patchkey_table(X, 3)
-    patchkey_r4 = patchkey_table(X, 4)
+    # P4-06: Patchkey Tables (conditional based on schema)
+    # Schema lattice for MDL minimality:
+    # - S0: no patchkeys (coarsest, minimal discrimination)
+    # - S1: only r2 (5×5 neighborhood)
+    # - S2: only r3 (7×7 neighborhood)
+    # - S3: only r4 (9×9 neighborhood, finest discrimination)
+    patchkey_r2 = None
+    patchkey_r3 = None
+    patchkey_r4 = None
+
+    if schema == 'S1':
+        patchkey_r2 = patchkey_table(X, 2)
+    elif schema == 'S2':
+        patchkey_r3 = patchkey_table(X, 3)
+    elif schema == 'S3':
+        patchkey_r4 = patchkey_table(X, 4)
+    # S0: no patchkeys computed (all remain None)
 
     # Bug B2 Fix: Compute pair-invariant NPS and component features
     # These replace raw band IDs and component IDs in signatures

@@ -92,7 +92,8 @@ def compute_residual(Xp: list[list[int]], Y: list[list[int]]) -> list[list[objec
 
 
 def build_phi_partition(
-    tr_pairs_afterP: list[tuple[list[list[int]], list[list[int]]]] | list[dict]
+    tr_pairs_afterP: list[tuple[list[list[int]], list[list[int]]]] | list[dict],
+    schema: str = 'S3'
 ) -> tuple[list[dict], dict[int, list[tuple[int, int, int]]]]:
     """
     Build Φ-partition over residual pixels across training pairs.
@@ -101,6 +102,12 @@ def build_phi_partition(
     on Xp_i (INPUT-ONLY per Φ.3), and groups residual pixels by canonical
     per-pixel signature. Returns (items, classes) for later action inference
     and stitching.
+
+    Schema Lattice (MDL Minimality):
+    - S0: Base features only (no patchkeys) - COARSEST, minimal discrimination
+    - S1: S0 + patchkey_r2 (5×5 local context)
+    - S2: S0 + patchkey_r3 (7×7 local context)
+    - S3: S0 + patchkey_r4 (9×9 local context) - FINEST, maximal discrimination
 
     Mathematical semantics:
     - For each train i: R_i marks pixels where Xp_i != Y_i (residual set)
@@ -117,6 +124,8 @@ def build_phi_partition(
             - Format A: [(Xp, Y), ...]  (list of tuples)
             - Format B: [{"Xp": ..., "Y": ...}, ...]  (list of dicts)
             - Each Xp, Y is a rectangular grid (list[list[int]])
+        schema: Schema level ('S0', 'S1', 'S2', 'S3') - controls patchkey inclusion
+            (default 'S3' for backward compatibility)
 
     Returns:
         Tuple (items, classes) where:
@@ -184,7 +193,8 @@ def build_phi_partition(
         residual = compute_residual(Xp, Y)
 
         # Compute Φ features on Xp ONLY (Φ.3 input-only constraint)
-        feats = phi_signature_tables(Xp)
+        # Schema determines which patchkeys are included
+        feats = phi_signature_tables(Xp, schema)
 
         items.append({"Xp": Xp, "Y": Y, "feats": feats, "residual": residual})
 
@@ -202,8 +212,9 @@ def build_phi_partition(
             for c in range(w):
                 # Only partition residual pixels (where Xp != Y)
                 if residual[r][c] is not None:
-                    # Build 13-field signature tuple at (r,c)
-                    sig = _build_signature(feats, r, c, Xp)
+                    # Build schema-dependent signature tuple at (r,c)
+                    # S0: 7-tuple, S1/S2/S3: 8-tuple
+                    sig = _build_signature(feats, r, c, Xp, schema)
                     sig_to_pixels[sig].append((i, r, c))
 
     # Assign deterministic class IDs via lexicographic ordering
@@ -219,48 +230,55 @@ def build_phi_partition(
 
 
 def _build_signature(
-    feats: dict, r: int, c: int, Xp: list[list[int]]
+    feats: dict, r: int, c: int, Xp: list[list[int]], schema: str = 'S3'
 ) -> tuple:
     """
-    Extract 12-field pair-invariant signature tuple at pixel (r,c).
+    Extract pair-invariant signature tuple at pixel (r,c).
 
     BUG FIXES (2025-10-26):
     - B1: Removed absolute position features (parity, rowmod, colmod)
     - B2: Replaced pair-specific IDs with pair-invariant features
+    - B4: Removed row_offset and col_offset (too position-specific)
+    - Schema Lattice: Conditional patchkey inclusion for MDL minimality
 
-    Signature fields (in fixed order):
+    Schema Lattice (MDL Minimality):
+    - S0: 7-tuple (base features only, no patchkeys) - COARSEST
+    - S1: 8-tuple (base + patchkey_r2) - 5×5 local context
+    - S2: 8-tuple (base + patchkey_r3) - 7×7 local context
+    - S3: 8-tuple (base + patchkey_r4) - 9×9 local context (FINEST)
+
+    Base signature fields (S0, 7-tuple):
     1. row_boundary: 1 if on NPS row boundary, 0 otherwise
     2. col_boundary: 1 if on NPS col boundary, 0 otherwise
-    3. row_offset: position within row band (0=start, 1=middle, 2=end)
-    4. col_offset: position within col band (0=start, 1=middle, 2=end)
-    5. is_color: Xp[r][c] (original color at pixel)
-    6. touching_flags: 10-bit bitmask (bit c set if touching_color[c][r][c])
-    7. largest_comp: 1 if in largest component, 0 otherwise
-    8. comp_size: component size bucket (0=tiny, 1=small, 2=medium, 3=large)
-    9. comp_aspect: component aspect (0=tall, 1=square, 2=wide)
-    10. patchkey_r2: key from patchkeys["r2"][r][c] (tuple or None)
-    11. patchkey_r3: key from patchkeys["r3"][r][c] (tuple or None)
-    12. patchkey_r4: key from patchkeys["r4"][r][c] (tuple or None)
+    3. is_color: Xp[r][c] (original color at pixel)
+    4. touching_flags: 10-bit bitmask (bit c set if touching_color[c][r][c])
+    5. largest_comp: 1 if in largest component, 0 otherwise
+    6. comp_size: component size bucket (0=tiny, 1=small, 2=medium, 3=large)
+    7. comp_aspect: component aspect (0=tall, 1=square, 2=wide)
+
+    Schema-conditional fields (S1/S2/S3, +1 field):
+    8. patchkey (schema-dependent): canonical patch key or () if None
 
     Args:
-        feats: Φ features dict from phi_signature_tables(Xp)
+        feats: Φ features dict from phi_signature_tables(Xp, schema)
         r: Row index
         c: Column index
         Xp: Original transformed grid (for is_color field)
+        schema: Schema level ('S0', 'S1', 'S2', 'S3') - default 'S3'
 
     Returns:
-        12-tuple signature in fixed order (deterministic, comparable)
+        Signature tuple (7-tuple for S0, 8-tuple for S1/S2/S3)
     """
-    # NPS pair-invariant features (fields 1-4)
+    # Base features (always present in all schemas)
+
+    # NPS pair-invariant features (fields 1-2)
     row_boundary = feats["nps"]["row_boundary"][r][c]
     col_boundary = feats["nps"]["col_boundary"][r][c]
-    row_offset = feats["nps"]["row_offset"][r][c]
-    col_offset = feats["nps"]["col_offset"][r][c]
 
-    # Original color (field 5)
+    # Original color (field 3)
     is_color = Xp[r][c]
 
-    # Touching flags: pack 10-bit mask (field 6)
+    # Touching flags: pack 10-bit mask (field 4)
     # Bit position c is set if touching_color[c][r][c] == True
     touching_flags = sum(
         (1 << color)
@@ -268,36 +286,47 @@ def _build_signature(
         if feats["local"]["touching_color"][color][r][c]
     )
 
-    # Component pair-invariant features (fields 7-9)
+    # Component pair-invariant features (fields 5-7)
     largest_comp = feats["components"]["largest_comp"][r][c]
     comp_size = feats["components"]["comp_size"][r][c]
     comp_aspect = feats["components"]["comp_aspect"][r][c]
 
-    # Patchkeys (fields 10-12)
-    # Convert None to empty tuple for sortability (None < tuple fails)
-    patchkey_r2 = feats["patchkeys"]["r2"][r][c]
-    patchkey_r3 = feats["patchkeys"]["r3"][r][c]
-    patchkey_r4 = feats["patchkeys"]["r4"][r][c]
-
-    # Replace None with () for lexicographic sorting
-    patchkey_r2 = () if patchkey_r2 is None else patchkey_r2
-    patchkey_r3 = () if patchkey_r3 is None else patchkey_r3
-    patchkey_r4 = () if patchkey_r4 is None else patchkey_r4
-
-    return (
+    # Base 7-tuple (used by all schemas)
+    base_sig = (
         row_boundary,
         col_boundary,
-        row_offset,
-        col_offset,
         is_color,
         touching_flags,
         largest_comp,
         comp_size,
         comp_aspect,
-        patchkey_r2,
-        patchkey_r3,
-        patchkey_r4,
     )
+
+    # Schema-conditional patchkey (field 8 for S1/S2/S3)
+    if schema == 'S0':
+        # S0: No patchkeys (coarsest schema)
+        return base_sig  # 7-tuple
+
+    elif schema == 'S1':
+        # S1: Base + patchkey_r2 (5×5 context)
+        patchkey = feats["patchkeys"]["r2"][r][c]
+        patchkey = () if patchkey is None else patchkey
+        return base_sig + (patchkey,)  # 8-tuple
+
+    elif schema == 'S2':
+        # S2: Base + patchkey_r3 (7×7 context)
+        patchkey = feats["patchkeys"]["r3"][r][c]
+        patchkey = () if patchkey is None else patchkey
+        return base_sig + (patchkey,)  # 8-tuple
+
+    elif schema == 'S3':
+        # S3: Base + patchkey_r4 (9×9 context, finest schema)
+        patchkey = feats["patchkeys"]["r4"][r][c]
+        patchkey = () if patchkey is None else patchkey
+        return base_sig + (patchkey,)  # 8-tuple
+
+    else:
+        raise ValueError(f"Invalid schema: {schema}. Must be 'S0', 'S1', 'S2', or 'S3'.")
 
 
 def stitch_from_classes(
