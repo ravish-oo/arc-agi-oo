@@ -319,7 +319,7 @@ Phase-3 WO lineup (titles only), each ≤500-LOC and dependency-clean:
 
 ---
 
-### Phase 4: Signature Builders (Φ Features)
+### Phase 4: Signature Builders (Φ Features) ✅ COMPLETE
 
 **Duration:** 2 days
 **Deliverable:** Complete Φ signature system
@@ -401,7 +401,7 @@ P4-04 — Component IDs: component_id_table (8-connected, deterministic tie-brea
 P4-05 — Patch Canonicalizer Core: OFA + D8 key for arbitrary patch ✅ COMPLETE
 P4-06 — Patchkey Tables r∈{2,3,4}: patchkey_table (5×5, 7×7, 9×9) ✅ COMPLETE
 P4-07 — Φ Aggregator: phi_signature_tables(X) (assemble all features) ✅ COMPLETE
-P4-08 — Φ Test Suite: Φ.3 stability, finiteness, disjointness
+P4-08 — Φ Test Suite: Φ.3 stability, finiteness, disjointness ✅ COMPLETE
 
 ---
 
@@ -461,6 +461,15 @@ pytest tests/test_actions.py  # All action inference tests pass
 - See spec.md lines 43-49 for action definitions
 - primary-anchor.md lines 193-196 for inference logic
 - Constructive actions (draw_line, draw_box) will be added in Phase 12 if needed
+
+#### Implementation WOs
+Here’s the Phase-5 WO lineup (titles only), each ≤500-LOC and dependency-clean within P5:
+
+* **P5-01 — Action Kernels I: apply_set_color, apply_keep_nonzero, apply_identity**
+* **P5-02 — Action Kernels II: apply_mirror_h, apply_mirror_v (pure, deterministic)**
+* **P5-03 — Class Verifier: verify_action_on_class (FY across all trains)**
+* **P5-04 — Inference Core: infer_action_for_class (ordered try, unified params, deterministic)**
+* **P5-05 — Action Test Suite: synthetic fixtures, purity checks, edge cases**
 
 ---
 

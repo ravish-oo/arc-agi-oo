@@ -235,6 +235,7 @@ Source-of-truth specifications
   - **Phase 1**: P1-01 through P1-06 (foundation modules) ✅
   - **Phase 2**: P2-01 through P2-16 (16 global families) ✅
   - **Phase 3**: P3-01 through P3-04 (Step-1 solver, receipts, CLI, coverage meter) ✅
+  - **Phase 4**: P4-01 through P4-08 (Φ signature builders, property tests) ✅
 
 ### `/reports/`
 Coverage tracking and metrics
@@ -258,16 +259,26 @@ Utility scripts
 - `solver_step1.py` — Step-1 solver (global P only, first-pass selection) with CLI
 - `receipts.py` — Proof-of-work receipts (PASS/UNSAT, task_meta, stable hash)
 
+**Phase 4 Signature Builders** (`src/signature_builders.py`):
+- Index predicates (parity_mask, rowmod_mask, colmod_mask)
+- NPS bands (row_band_masks, col_band_masks)
+- Local content (is_color_mask, touching_color_mask)
+- Component IDs (component_id_table)
+- Patch canonicalizer (patch_canonical_key, patch_canonical_rep, patchkey_table)
+- Φ aggregator (phi_signature_tables) — assembles ALL Φ features into single dict
+
 ### `/tests/`
 - **Phase 1**: 218 tests (utils, canonicalization, components) ✅
 - **Phase 2**: 581 tests (16 global families, comprehensive coverage) ✅
 - **Phase 3**: 55 tests (receipts, CLI, coverage meter) ✅
+- **Phase 4**: 194 tests (signature builders: index, NPS, local content, components, patchkeys, aggregator, properties) ✅
 - `measure_coverage.py` — Coverage measurement tool (deterministic, sorted output, per-family breakdown)
 
 ### `/reviews/`
 - **Phase 1**: P1-01 through P1-06 mathematical correctness verification (all PASS) ✅
 - **Phase 2**: P2-01 through P2-16 math-reviewer verification (all PASS) ✅
 - **Phase 3**: P3-02 (receipts), P3-04 (coverage meter) algorithm-guardian verification (all PASS) ✅
+- **Phase 4**: P4-01 through P4-08 math-reviewer verification (Φ.3 stability, finiteness, disjointness — all PASS) ✅
 
 ---
 
@@ -304,5 +315,5 @@ Utility scripts
 
 ---
 
-**Last updated:** 2025-10-25 (Phase 3 complete, Phase 4 ready)
+**Last updated:** 2025-10-25 (Phase 4 complete — all Φ signature builders implemented and verified)
 **Maintainers:** Update this file when adding new anchors, modules, or resolving ambiguities.
