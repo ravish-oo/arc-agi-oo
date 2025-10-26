@@ -11,6 +11,7 @@ Phase 4 Work Orders:
 - P4-03: Local Content (is_color_mask, touching_color_mask)
 - P4-04: Component IDs (component_id_table)
 - P4-05: Patch Canonicalizer Core (patch_canonical_key, patch_canonical_rep, is_valid_patch_size)
+- P4-06: Patchkey Tables (patchkey_table)
 
 Public API:
 - parity_mask(g) → (M0, M1)
@@ -24,6 +25,7 @@ Public API:
 - is_valid_patch_size(n) → bool (True iff n is odd and >= 1)
 - patch_canonical_key(p) → (R, C, values_tuple) (OFA + D8 minimal key)
 - patch_canonical_rep(p) → canonical patch (OFA + D8 representative)
+- patchkey_table(g, r) → table of canonical keys or None (r ∈ {2,3,4})
 
 All masks are 0/1 grids with shape(mask) == shape(g), forming disjoint partitions.
 
@@ -834,3 +836,88 @@ def patch_canonical_rep(p: list[list[int]]) -> list[list[int]]:
             min_rep = transformed
 
     return min_rep
+
+
+def patchkey_table(g: list[list[int]], r: int) -> list[list[object]]:
+    """
+    Compute per-pixel canonical patch keys for radius r.
+
+    For each pixel (i,j) in the grid, if a full (2r+1)×(2r+1) window can be
+    centered at that pixel, compute the canonical patch key for that window.
+    Otherwise, store None (for border pixels where window doesn't fit).
+
+    Window sizes:
+    - r=2: 5×5 window
+    - r=3: 7×7 window
+    - r=4: 9×9 window
+
+    Valid centers for grid of size R×C:
+    - Row indices: i ∈ [r, R-1-r] (inclusive)
+    - Col indices: j ∈ [r, C-1-r] (inclusive)
+
+    Properties:
+    - Input-only: depends on grid structure (Φ.3 stability)
+    - OFA locality: palette permutations → identical keys at valid centers
+    - Deterministic: stable ordering via patch_canonical_key
+    - Purity: input grid unchanged (newly allocated table)
+    - No padding/wrapping: border pixels get None
+
+    Args:
+        g: Input grid (list of lists of ints), must be rectangular
+        r: Radius, must be in {2, 3, 4}
+
+    Returns:
+        Table of same shape as g, where each entry is either:
+        - (R, C, values_tuple): canonical key if window fits
+        - None: if window doesn't fit (border pixels)
+
+    Raises:
+        ValueError: If g is ragged or r not in {2, 3, 4}
+
+    Examples:
+        >>> patchkey_table([], 2)
+        []
+
+        >>> # Too small grid (2×2, needs 5×5)
+        >>> patchkey_table([[1, 2], [3, 4]], 2)
+        [[None, None], [None, None]]
+
+        >>> # Exact fit (5×5 grid, r=2)
+        >>> g = [[i for i in range(5)] for _ in range(5)]
+        >>> table = patchkey_table(g, 2)
+        >>> # Only center (2,2) has valid window, others are None
+        >>> table[2][2] is not None
+        True
+        >>> table[0][0] is None
+        True
+    """
+    _validate_rectangular(g)
+
+    if r not in {2, 3, 4}:
+        raise ValueError(f"Radius must be in {{2, 3, 4}}, got {r}")
+
+    if not g:
+        return []
+
+    R = len(g)
+    C = len(g[0])
+
+    # Initialize table with None
+    table = [[None for _ in range(C)] for _ in range(R)]
+
+    # Compute keys for valid centers only
+    # Valid row indices: [r, R-1-r] (inclusive)
+    # Valid col indices: [r, C-1-r] (inclusive)
+    for i in range(r, R - r):
+        for j in range(r, C - r):
+            # Extract window centered at (i, j)
+            # Window covers [i-r:i+r+1, j-r:j+r+1] (inclusive on both ends)
+            window = [row[j - r : j + r + 1] for row in g[i - r : i + r + 1]]
+
+            # Compute canonical key
+            key = patch_canonical_key(window)
+
+            # Store in table
+            table[i][j] = key
+
+    return table
