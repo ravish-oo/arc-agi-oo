@@ -577,3 +577,154 @@ def verify_action_on_class(
 
     # All trains satisfy FY equality on class pixels
     return True
+
+
+# ============================================================================
+# Action Kernels IV — Inference Core (P5-04)
+# ============================================================================
+
+
+def infer_action_for_class(
+    items: list[dict],
+    class_coords: list[tuple[int, int, int]]
+) -> tuple[str, object | None] | None:
+    """Infer a single action that satisfies FY on this class across ALL training pairs.
+
+    Fixed Action Order: Try actions in this EXACT order (first-pass selection):
+    1. set_color (with unified parameter c ∈ [0..9])
+    2. mirror_h
+    3. mirror_v
+    4. keep_nonzero
+    5. identity
+
+    Returns the FIRST action that passes verification, or None if none pass.
+
+    Args:
+        items: List of training pair dicts, each with keys:
+            - "Xp": Rectangular grid (frozen base)
+            - "Y": Rectangular grid (target)
+        class_coords: List of (i, r, c) triples indicating class pixels
+            - i: train index
+            - r, c: pixel coordinates within train i
+
+    Returns:
+        - ("set_color", c) if set_color with unified color c satisfies FY
+        - ("mirror_h", None) if mirror_h satisfies FY (and set_color didn't)
+        - ("mirror_v", None) if mirror_v satisfies FY (and earlier actions didn't)
+        - ("keep_nonzero", None) if keep_nonzero satisfies FY (and earlier actions didn't)
+        - ("identity", None) if identity satisfies FY (and earlier actions didn't)
+        - None if NO action satisfies FY (UNSAT)
+
+    Unified Parameter Rule (set_color):
+        - Gather ALL Y[r][c] values for (i,r,c) in class_coords
+        - If ALL values equal the same color c → try set_color with c
+        - If multiple colors appear → skip set_color (inadmissible)
+
+    Edge Cases:
+        - Empty class_coords → ("identity", None) (vacuous truth)
+        - All trains have no coords for this class → ("identity", None)
+        - Single train still requires unified param (same rule)
+
+    Validation (raises ValueError):
+        - Rectangular grids (Xp and Y)
+        - Coords in bounds
+        - Shape compatibility
+
+    Guarantees:
+        - FY exactness: Bit-for-bit equality on class pixels
+        - Unified parameters: Single color across ALL trains for set_color
+        - Determinism: Fixed action order, sorted coords
+        - GLUE-safe: Uses existing kernels (read from frozen Xp only)
+        - Purity: No mutation of inputs
+
+    Examples:
+        # Unified color → set_color wins
+        >>> items = [
+        ...     {"Xp": [[1, 2]], "Y": [[5, 2]]},
+        ...     {"Xp": [[3, 4]], "Y": [[5, 4]]}
+        ... ]
+        >>> class_coords = [(0, 0, 0), (1, 0, 0)]  # Both Y[0][0] = 5
+        >>> infer_action_for_class(items, class_coords)
+        ('set_color', 5)
+
+        # Mixed colors → skip set_color, try mirrors
+        >>> items = [
+        ...     {"Xp": [[1, 2]], "Y": [[5, 2]]},
+        ...     {"Xp": [[3, 4]], "Y": [[7, 4]]}  # Y[0][0] = 7, not 5
+        ... ]
+        >>> # Will skip set_color, try mirror_h, mirror_v, etc.
+
+        # Empty class → identity
+        >>> infer_action_for_class([], [])
+        ('identity', None)
+
+        # UNSAT → None
+        >>> items = [{"Xp": [[1]], "Y": [[999]]}]
+        >>> class_coords = [(0, 0, 0)]
+        >>> # No action transforms 1 to 999 → None
+
+    Mathematical Note:
+        This implements the action inference step from spec.md.
+        For a Φ-class with signature σ, infer action A_σ that
+        satisfies FY equality on all pixels where Φ(x) = σ.
+
+        Action order is deterministic and fixed, ensuring reproducibility.
+        This is used in Step 2 of the 3-step algorithm.
+    """
+    # Vacuous case: Empty class → identity (no transformation needed)
+    if not class_coords:
+        return ("identity", None)
+
+    # Build candidate list starting with set_color (if admissible)
+    candidates = []
+
+    # Try set_color: Compute unified parameter from Y
+    # Gather all Y values at class coords across all trains
+    try:
+        y_values = []
+        for (i, r, c) in class_coords:
+            # Access Y from training pair
+            Y = items[i]["Y"]
+            y_values.append(Y[r][c])
+
+        # Check if all Y values are the same color
+        colors_set = set(y_values)
+
+        if len(colors_set) == 1:
+            # Unified color exists → try set_color
+            unified_color = colors_set.pop()
+
+            # Validate color range
+            if not (0 <= unified_color <= 9):
+                # Invalid color in Y (shouldn't happen with valid inputs, but be safe)
+                # Skip set_color
+                pass
+            else:
+                candidates.append(("set_color", unified_color))
+        # else: Multiple colors → skip set_color (inadmissible)
+
+    except (IndexError, KeyError):
+        # Error accessing Y values → skip set_color
+        # This shouldn't happen with valid inputs, but be defensive
+        pass
+
+    # Add remaining actions in fixed order
+    candidates.extend([
+        ("mirror_h", None),
+        ("mirror_v", None),
+        ("keep_nonzero", None),
+        ("identity", None)
+    ])
+
+    # First-pass selection: Try each action in order
+    for action in candidates:
+        try:
+            if verify_action_on_class(action, items, class_coords):
+                return action  # First match wins
+        except ValueError:
+            # Validation error (ragged grid, out of bounds, etc.)
+            # Continue to next action
+            continue
+
+    # UNSAT: No action satisfies FY
+    return None
