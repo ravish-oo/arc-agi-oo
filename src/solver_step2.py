@@ -447,3 +447,160 @@ def solve_step2(task: dict) -> dict:
         "candidate": best,
         "candidates_tried": candidates
     }
+
+
+def _cli_main(argv: list[str] | None = None) -> int:
+    """
+    CLI entry point for Step-2 solver on single task.
+
+    Algorithm:
+        1. Parse args: --task <path>, --task-id <id>, [--print-receipt]
+        2. Load dataset JSON from <path>
+        3. Extract task with id == <id>
+        4. Validate task has "train" and "test" keys
+        5. Call solve_step2(task)
+        6. Build output dict with task_id and predictions
+        7. Optionally include receipt if --print-receipt
+        8. Print single JSON line to stdout (deterministic)
+        9. Return 0
+
+    Args:
+        argv: Command-line arguments (defaults to sys.argv[1:] if None)
+              Format: ["--task", "path.json", "--task-id", "abc123", "--print-receipt"]
+
+    Returns:
+        Exit code:
+        - 0: Success (PASS or UNSAT with valid output)
+        - 2: File not found or JSON parse error
+        - 3: Task ID not found in dataset
+        - 4: Malformed task (missing "train" or "test")
+
+    Output (to stdout):
+        Single JSON line:
+        {"task_id": "abc123", "predictions": [[[1,2],[3,4]]], "receipt": {...}}
+
+        If --print-receipt not set, omit "receipt" key.
+        If UNSAT, omit "predictions" key.
+
+        JSON format: sort_keys=True, separators=(',',':')
+
+    Edge cases:
+        - Empty train set: solve_step2 returns UNSAT → exit 0 with no predictions
+        - Empty test set: predictions = [] → exit 0
+        - Invalid grid (ragged rows): solve_step2 handles → exit 0 with UNSAT
+
+    Invariants:
+        - Deterministic: same inputs → same outputs (sorted keys)
+        - Pure I/O: read file, print once, exit
+        - No side effects: no logs, no timestamps, no env access
+
+    Purity:
+        - Read-only on task
+        - Stdout writes only
+    """
+    import argparse
+    import json
+    import sys
+
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        description="Run Step-2 solver on a single ARC task",
+        add_help=True
+    )
+    parser.add_argument("--task", required=True, help="Path to task dataset JSON")
+    parser.add_argument("--task-id", required=True, help="Task ID to solve")
+    parser.add_argument("--print-receipt", action="store_true",
+                        help="Include receipt in output")
+
+    try:
+        if argv is None:
+            args = parser.parse_args()
+        else:
+            args = parser.parse_args(argv)
+    except SystemExit as e:
+        return e.code if e.code else 0
+
+    task_path = args.task
+    task_id = args.task_id
+    print_receipt = args.print_receipt
+
+    # Load dataset
+    try:
+        with open(task_path, 'r') as f:
+            dataset = json.load(f)
+    except FileNotFoundError:
+        print(json.dumps({"error": "file_not_found"}), file=sys.stderr)
+        return 2
+    except json.JSONDecodeError:
+        print(json.dumps({"error": "json_parse_error"}), file=sys.stderr)
+        return 2
+
+    # Extract task by ID
+    if task_id not in dataset:
+        print(json.dumps({"error": "task_id_not_found"}), file=sys.stderr)
+        return 3
+
+    task = dataset[task_id]
+
+    # Validate task structure
+    if "train" not in task or "test" not in task:
+        print(json.dumps({"error": "malformed_task"}), file=sys.stderr)
+        return 4
+
+    # Add task ID to task dict for receipts
+    task["id"] = task_id
+
+    # Call solve_step2
+    try:
+        result = solve_step2(task)
+    except Exception as e:
+        # Solver exception → treat as UNSAT (defensive)
+        result = {"status": "UNSAT", "reason": "solver_exception"}
+
+    # Build output dict
+    output = {"task_id": task_id}
+
+    # Add predictions if PASS
+    if result["status"] == "PASS" and "predictions" in result:
+        output["predictions"] = result["predictions"]
+
+    # Add receipt if requested
+    if print_receipt:
+        # Build receipt from result
+        if result["status"] == "PASS":
+            # PASS receipt: Φ-mode with chosen candidate
+            from src.receipts import generate_receipt_phi
+
+            candidate = result["candidate"]
+            candidates_tried = result.get("candidates_tried", [])
+
+            receipt = generate_receipt_phi(
+                candidate["P"],
+                candidate["classes"],
+                candidate["actions"],
+                candidates_tried
+            )
+            output["receipt"] = receipt
+        else:
+            # UNSAT receipt
+            from src.receipts import generate_receipt_unsat
+
+            reason = result.get("reason", "no_passing_candidates")
+            task_meta = {
+                "task_id": task_id,
+                "train_n": len(task.get("train", [])),
+                "test_n": len(task.get("test", []))
+            }
+            receipt = generate_receipt_unsat(reason, task_meta)
+            output["receipt"] = receipt
+
+    # Print output as single JSON line (deterministic)
+    print(json.dumps(output, sort_keys=True, separators=(',', ':')))
+
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    exit_code = _cli_main()
+    sys.exit(exit_code)
