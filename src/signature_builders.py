@@ -9,6 +9,7 @@ Phase 4 Work Orders:
 - P4-01: Index Predicates (parity_mask, rowmod_mask, colmod_mask)
 - P4-02: NPS Bands (row_band_masks, col_band_masks)
 - P4-03: Local Content (is_color_mask, touching_color_mask)
+- P4-04: Component IDs (component_id_table)
 
 Public API:
 - parity_mask(g) → (M0, M1)
@@ -18,6 +19,7 @@ Public API:
 - col_band_masks(g) → [B0, ..., Bn]
 - is_color_mask(g, color) → M (0/1 mask)
 - touching_color_mask(g, color) → T (0/1 mask, 4-neighbor dilation)
+- component_id_table(g) → (id_grid, meta) (8-connected, deterministic IDs)
 
 All masks are 0/1 grids with shape(mask) == shape(g), forming disjoint partitions.
 
@@ -27,7 +29,7 @@ Invariants (per primary-anchor.md):
 - Φ.3 (Stability): Depends only on INPUT (never on target Y)
 """
 
-from src.components import boundaries_by_any_change
+from src.components import boundaries_by_any_change, components_by_color
 
 
 def _validate_rectangular(g: list[list[int]]) -> None:
@@ -516,3 +518,119 @@ def touching_color_mask(g: list[list[int]], color: int) -> list[list[int]]:
             mask[r][c] = 1 if touching else 0
 
     return mask
+
+
+def component_id_table(
+    g: list[list[int]],
+) -> tuple[list[list[int]], list[dict]]:
+    """
+    Assign stable, deterministic IDs to all 8-connected components in grid.
+
+    Returns (id_grid, meta) where:
+    - id_grid[r][c] = component ID for pixel (r,c)
+    - meta[id] = {"color": int, "size": int, "bbox": tuple, "seed_rc": tuple}
+
+    IDs are assigned globally across all colors (0..K-1 for K components) using
+    deterministic 3-level tie-breaking:
+    1. Primary: Larger components first (sort by -size)
+    2. Secondary: If sizes equal, sort by bbox (r0,c0,r1,c1) lexicographically
+    3. Tertiary: If sizes and bboxes equal, sort by seed_rc (first cell row-major)
+
+    Properties:
+    - Input-only: depends on grid values and structure (Φ.3 stability)
+    - 8-connected: includes diagonal adjacency {(±1,0), (0,±1), (±1,±1)}
+    - Global ID space: all components share 0..K-1 namespace (not per-color)
+    - Deterministic: stable ordering under identical inputs
+
+    Args:
+        g: Input grid (list of lists of ints)
+
+    Returns:
+        Tuple (id_grid, meta) where:
+        - id_grid: same shape as g, each pixel has its component ID
+        - meta: list[dict] where meta[id] contains component metadata:
+            - "color": color value of component (0-9)
+            - "size": number of pixels in component
+            - "bbox": (r0, c0, r1, c1) inclusive bounding box
+            - "seed_rc": (r, c) lexicographically first cell in row-major order
+
+    Raises:
+        ValueError: If g is ragged
+
+    Examples:
+        >>> component_id_table([])
+        ([], [])
+
+        >>> component_id_table([[5]])
+        ([[0]], [{"color": 5, "size": 1, "bbox": (0,0,0,0), "seed_rc": (0,0)}])
+
+        >>> component_id_table([[3, 3], [3, 3]])
+        ([[0, 0], [0, 0]], [{"color": 3, "size": 4, "bbox": (0,0,1,1), "seed_rc": (0,0)}])
+
+        >>> component_id_table([[1, 1, 1], [2, 2, 0]])
+        # Returns:
+        # id_grid: [[0, 0, 0], [1, 1, 2]]
+        # meta: [
+        #   {"color": 1, "size": 3, "bbox": (0,0,0,2), "seed_rc": (0,0)},  # ID 0
+        #   {"color": 2, "size": 2, "bbox": (1,0,1,1), "seed_rc": (1,0)},  # ID 1
+        #   {"color": 0, "size": 1, "bbox": (1,2,1,2), "seed_rc": (1,2)}   # ID 2
+        # ]
+    """
+    _validate_rectangular(g)
+
+    if not g:
+        return ([], [])
+
+    h = len(g)
+    w = len(g[0])
+
+    # Get all 8-connected components grouped by color
+    comp_dict = components_by_color(g)
+
+    # Flatten all components with metadata
+    all_components = []
+    for color, comp_list in comp_dict.items():
+        for comp in comp_list:
+            # Each comp is a dict with "cells", "bbox", "color", "id"
+            cells = comp["cells"]
+            size = len(cells)
+            bbox = comp["bbox"]
+
+            # Find seed_rc: lexicographically first cell in row-major order
+            # cells is already sorted row-major, so first element is seed
+            seed_rc = cells[0]
+
+            all_components.append(
+                {
+                    "color": color,
+                    "size": size,
+                    "bbox": bbox,
+                    "seed_rc": seed_rc,
+                    "pixels": cells,
+                }
+            )
+
+    # Sort by (-size, bbox, seed_rc) for deterministic ID assignment
+    # Larger components first, then bbox lex, then seed_rc lex
+    all_components.sort(key=lambda c: (-c["size"], c["bbox"], c["seed_rc"]))
+
+    # Assign IDs and build outputs
+    id_grid = [[0] * w for _ in range(h)]
+    meta = []
+
+    for comp_id, comp in enumerate(all_components):
+        # Fill id_grid with this component's ID
+        for r, c in comp["pixels"]:
+            id_grid[r][c] = comp_id
+
+        # Build metadata entry (without pixels list)
+        meta.append(
+            {
+                "color": comp["color"],
+                "size": comp["size"],
+                "bbox": comp["bbox"],
+                "seed_rc": comp["seed_rc"],
+            }
+        )
+
+    return (id_grid, meta)
