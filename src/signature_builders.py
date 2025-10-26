@@ -948,11 +948,9 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
         Dict with fixed key order ["index", "nps", "local", "components", "patchkeys"]:
         {
             "index": {
-                "parity": [M0, M1],
-                "rowmod_k2": [M0, M1],
-                "rowmod_k3": [M0, M1, M2],
-                "colmod_k2": [M0, M1],
-                "colmod_k3": [M0, M1, M2]
+                "parity": {"M0": M0, "M1": M1},
+                "rowmod": {"k2": [M0, M1], "k3": [M0, M1, M2]},
+                "colmod": {"k2": [M0, M1], "k3": [M0, M1, M2]}
             },
             "nps": {
                 "row_bands": [B0, ..., Bn],
@@ -960,10 +958,10 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
             },
             "local": {
                 "is_color": {
-                    "0": M0, "1": M1, ..., "9": M9
+                    0: M0, 1: M1, ..., 9: M9
                 },
                 "touching_color": {
-                    "0": T0, "1": T1, ..., "9": T9
+                    0: T0, 1: T1, ..., 9: T9
                 }
             },
             "components": {
@@ -991,9 +989,9 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
         }
 
         >>> result = phi_signature_tables([[5, 5], [5, 5]])
-        >>> result["local"]["is_color"]["5"]
+        >>> result["local"]["is_color"][5]
         [[1, 1], [1, 1]]
-        >>> result["local"]["is_color"]["3"]
+        >>> result["local"]["is_color"][3]
         [[0, 0], [0, 0]]
     """
     _validate_rectangular(X)
@@ -1013,8 +1011,8 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
     is_color_dict = {}
     touching_color_dict = {}
     for color in range(10):
-        is_color_dict[str(color)] = is_color_mask(X, color)
-        touching_color_dict[str(color)] = touching_color_mask(X, color)
+        is_color_dict[color] = is_color_mask(X, color)
+        touching_color_dict[color] = touching_color_mask(X, color)
 
     # P4-04: Component IDs
     id_grid, meta = component_id_table(X)
@@ -1027,11 +1025,9 @@ def phi_signature_tables(X: list[list[int]]) -> dict:
     # Assemble with FIXED KEY ORDER (for deterministic JSON)
     result = {
         "index": {
-            "parity": [parity_m0, parity_m1],
-            "rowmod_k2": rowmod_k2,
-            "rowmod_k3": rowmod_k3,
-            "colmod_k2": colmod_k2,
-            "colmod_k3": colmod_k3,
+            "parity": {"M0": parity_m0, "M1": parity_m1},
+            "rowmod": {"k2": rowmod_k2, "k3": rowmod_k3},
+            "colmod": {"k2": colmod_k2, "k3": colmod_k3},
         },
         "nps": {
             "row_bands": row_bands,

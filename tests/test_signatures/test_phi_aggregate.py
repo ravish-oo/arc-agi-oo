@@ -48,7 +48,7 @@ def test_empty_grid():
     assert "patchkeys" in result
 
     # Empty masks/tables
-    assert result["index"]["parity"] == [[], []]
+    assert result["index"]["parity"] == {"M0": [], "M1": []}
     assert result["nps"]["row_bands"] == []
     assert result["nps"]["col_bands"] == []
     assert result["components"]["id_grid"] == []
@@ -61,10 +61,10 @@ def test_empty_grid():
     assert len(result["local"]["is_color"]) == 10
     assert len(result["local"]["touching_color"]) == 10
     for c in range(10):
-        assert str(c) in result["local"]["is_color"]
-        assert str(c) in result["local"]["touching_color"]
-        assert result["local"]["is_color"][str(c)] == []
-        assert result["local"]["touching_color"][str(c)] == []
+        assert c in result["local"]["is_color"]
+        assert c in result["local"]["touching_color"]
+        assert result["local"]["is_color"][c] == []
+        assert result["local"]["touching_color"][c] == []
 
 
 def test_single_pixel():
@@ -73,15 +73,16 @@ def test_single_pixel():
     result = phi_signature_tables(X)
 
     # Shape consistency
-    assert result["index"]["parity"] == [[[1]], [[0]]]
+    assert result["index"]["parity"]["M0"] == [[1]]
+    assert result["index"]["parity"]["M1"] == [[0]]
     assert result["components"]["id_grid"] == [[0]]
     assert len(result["components"]["meta"]) == 1
     assert result["components"]["meta"][0]["color"] == 5
 
     # All 10 colors present
-    assert result["local"]["is_color"]["5"] == [[1]]
-    assert result["local"]["is_color"]["3"] == [[0]]
-    assert result["local"]["touching_color"]["5"] == [[0]]  # color 5 excludes itself
+    assert result["local"]["is_color"][5] == [[1]]
+    assert result["local"]["is_color"][3] == [[0]]
+    assert result["local"]["touching_color"][5] == [[0]]  # color 5 excludes itself
 
 
 def test_2x2_grid():
@@ -91,13 +92,13 @@ def test_2x2_grid():
 
     # Shape consistency: all masks are 2×2
     parity = result["index"]["parity"]
-    assert len(parity[0]) == 2
-    assert len(parity[0][0]) == 2
+    assert len(parity["M0"]) == 2
+    assert len(parity["M0"][0]) == 2
 
     # All 10 colors present (even if absent from grid)
     assert len(result["local"]["is_color"]) == 10
     for c in range(10):
-        assert str(c) in result["local"]["is_color"]
+        assert c in result["local"]["is_color"]
 
 
 # ============================================================================
@@ -120,7 +121,7 @@ def test_index_subkey_order():
     X = [[1, 2], [3, 4]]
     result = phi_signature_tables(X)
 
-    expected_index_keys = ["parity", "rowmod_k2", "rowmod_k3", "colmod_k2", "colmod_k3"]
+    expected_index_keys = ["parity", "rowmod", "colmod"]
     assert list(result["index"].keys()) == expected_index_keys
 
 
@@ -173,7 +174,7 @@ def test_all_colors_in_is_color():
     is_color = result["local"]["is_color"]
     assert len(is_color) == 10
     for c in range(10):
-        assert str(c) in is_color
+        assert c in is_color
 
 
 def test_all_colors_in_touching_color():
@@ -184,7 +185,7 @@ def test_all_colors_in_touching_color():
     touching_color = result["local"]["touching_color"]
     assert len(touching_color) == 10
     for c in range(10):
-        assert str(c) in touching_color
+        assert c in touching_color
 
 
 def test_absent_colors_are_zero_masks():
@@ -193,22 +194,22 @@ def test_absent_colors_are_zero_masks():
     result = phi_signature_tables(X)
 
     # Color 5 is present → non-zero mask
-    assert result["local"]["is_color"]["5"] == [[1, 1], [1, 1]]
+    assert result["local"]["is_color"][5] == [[1, 1], [1, 1]]
 
     # Color 3 is absent → zero mask
-    assert result["local"]["is_color"]["3"] == [[0, 0], [0, 0]]
-    assert result["local"]["touching_color"]["3"] == [[0, 0], [0, 0]]
+    assert result["local"]["is_color"][3] == [[0, 0], [0, 0]]
+    assert result["local"]["touching_color"][3] == [[0, 0], [0, 0]]
 
 
-def test_color_keys_are_strings():
-    """Color keys must be strings "0" through "9"."""
+def test_color_keys_are_integers():
+    """Color keys must be integers 0 through 9."""
     X = [[1, 2], [3, 4]]
     result = phi_signature_tables(X)
 
     is_color = result["local"]["is_color"]
     for key in is_color.keys():
-        assert isinstance(key, str)
-        assert key in {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+        assert isinstance(key, int)
+        assert key in range(10)
 
 
 # ============================================================================
@@ -222,22 +223,22 @@ def test_shape_consistency_3x4_grid():
     result = phi_signature_tables(X)
 
     # Parity masks
-    assert len(result["index"]["parity"][0]) == 3
-    assert len(result["index"]["parity"][0][0]) == 4
+    assert len(result["index"]["parity"]["M0"]) == 3
+    assert len(result["index"]["parity"]["M0"][0]) == 4
 
     # Rowmod masks
-    assert len(result["index"]["rowmod_k2"][0]) == 3
-    assert len(result["index"]["rowmod_k2"][0][0]) == 4
+    assert len(result["index"]["rowmod"]["k2"][0]) == 3
+    assert len(result["index"]["rowmod"]["k2"][0][0]) == 4
 
     # is_color masks
     for c in range(10):
-        mask = result["local"]["is_color"][str(c)]
+        mask = result["local"]["is_color"][c]
         assert len(mask) == 3
         assert len(mask[0]) == 4
 
     # touching_color masks
     for c in range(10):
-        mask = result["local"]["touching_color"][str(c)]
+        mask = result["local"]["touching_color"][c]
         assert len(mask) == 3
         assert len(mask[0]) == 4
 
@@ -256,11 +257,11 @@ def test_shape_consistency_square_grid():
     result = phi_signature_tables(X)
 
     # All masks should be 5×5
-    assert len(result["index"]["parity"][0]) == 5
-    assert len(result["index"]["parity"][0][0]) == 5
+    assert len(result["index"]["parity"]["M0"]) == 5
+    assert len(result["index"]["parity"]["M0"][0]) == 5
 
     for c in range(10):
-        mask = result["local"]["is_color"][str(c)]
+        mask = result["local"]["is_color"][c]
         assert len(mask) == 5
         assert len(mask[0]) == 5
 
@@ -276,9 +277,9 @@ def test_parity_correctness():
     result = phi_signature_tables(X)
 
     # Expected parity: M0 for (r+c) even, M1 for (r+c) odd
-    # result["index"]["parity"] is a list [M0, M1]
-    assert result["index"]["parity"][0] == [[1, 0], [0, 1]]  # M0
-    assert result["index"]["parity"][1] == [[0, 1], [1, 0]]  # M1
+    # result["index"]["parity"] is a dict {"M0": ..., "M1": ...}
+    assert result["index"]["parity"]["M0"] == [[1, 0], [0, 1]]
+    assert result["index"]["parity"]["M1"] == [[0, 1], [1, 0]]
 
 
 def test_is_color_correctness():
@@ -287,10 +288,10 @@ def test_is_color_correctness():
     result = phi_signature_tables(X)
 
     # Color 5 appears at (0,0) and (1,1)
-    assert result["local"]["is_color"]["5"] == [[1, 0], [0, 1]]
+    assert result["local"]["is_color"][5] == [[1, 0], [0, 1]]
 
     # Color 3 appears at (0,1) and (1,0)
-    assert result["local"]["is_color"]["3"] == [[0, 1], [1, 0]]
+    assert result["local"]["is_color"][3] == [[0, 1], [1, 0]]
 
 
 def test_touching_color_correctness():
@@ -299,7 +300,7 @@ def test_touching_color_correctness():
     result = phi_signature_tables(X)
 
     # Pixels touching color 5: (0,1) and (1,0)
-    assert result["local"]["touching_color"]["5"] == [[0, 1], [1, 0]]
+    assert result["local"]["touching_color"][5] == [[0, 1], [1, 0]]
 
 
 def test_component_id_correctness():
@@ -327,9 +328,9 @@ def test_rowmod_k2_correctness():
     X = [[1, 2], [3, 4], [5, 6]]
     result = phi_signature_tables(X)
 
-    # rowmod_k2: M0 for even rows, M1 for odd rows
-    assert result["index"]["rowmod_k2"][0] == [[1, 1], [0, 0], [1, 1]]  # rows 0, 2
-    assert result["index"]["rowmod_k2"][1] == [[0, 0], [1, 1], [0, 0]]  # row 1
+    # rowmod k2: M0 for even rows, M1 for odd rows
+    assert result["index"]["rowmod"]["k2"][0] == [[1, 1], [0, 0], [1, 1]]  # rows 0, 2
+    assert result["index"]["rowmod"]["k2"][1] == [[0, 0], [1, 1], [0, 0]]  # row 1
 
 
 def test_colmod_k3_correctness():
@@ -337,10 +338,10 @@ def test_colmod_k3_correctness():
     X = [[1, 2, 3, 4, 5, 6]]
     result = phi_signature_tables(X)
 
-    # colmod_k3: M0 for cols 0,3, M1 for cols 1,4, M2 for cols 2,5
-    assert result["index"]["colmod_k3"][0] == [[1, 0, 0, 1, 0, 0]]
-    assert result["index"]["colmod_k3"][1] == [[0, 1, 0, 0, 1, 0]]
-    assert result["index"]["colmod_k3"][2] == [[0, 0, 1, 0, 0, 1]]
+    # colmod k3: M0 for cols 0,3, M1 for cols 1,4, M2 for cols 2,5
+    assert result["index"]["colmod"]["k3"][0] == [[1, 0, 0, 1, 0, 0]]
+    assert result["index"]["colmod"]["k3"][1] == [[0, 1, 0, 0, 1, 0]]
+    assert result["index"]["colmod"]["k3"][2] == [[0, 0, 1, 0, 0, 1]]
 
 
 def test_nps_bands_correctness():
@@ -417,8 +418,8 @@ def test_determinism_repeated_calls():
     # Compare is_color for all colors
     for c in range(10):
         assert (
-            result1["local"]["is_color"][str(c)]
-            == result2["local"]["is_color"][str(c)]
+            result1["local"]["is_color"][c]
+            == result2["local"]["is_color"][c]
         )
 
     # Compare component IDs
@@ -435,7 +436,7 @@ def test_determinism_different_grids():
     result2 = phi_signature_tables(X2)
 
     # Signatures should differ (is_color masks will differ)
-    assert result1["local"]["is_color"]["1"] != result2["local"]["is_color"]["1"]
+    assert result1["local"]["is_color"][1] != result2["local"]["is_color"][1]
 
 
 # ============================================================================
@@ -485,11 +486,11 @@ def test_all_same_color():
     X = [[5, 5, 5], [5, 5, 5]]
     result = phi_signature_tables(X)
 
-    # is_color["5"] should be all 1s
-    assert result["local"]["is_color"]["5"] == [[1, 1, 1], [1, 1, 1]]
+    # is_color[5] should be all 1s
+    assert result["local"]["is_color"][5] == [[1, 1, 1], [1, 1, 1]]
 
-    # touching_color["5"] should be all 0s (color excludes itself)
-    assert result["local"]["touching_color"]["5"] == [[0, 0, 0], [0, 0, 0]]
+    # touching_color[5] should be all 0s (color excludes itself)
+    assert result["local"]["touching_color"][5] == [[0, 0, 0], [0, 0, 0]]
 
     # Only 1 component
     assert len(result["components"]["meta"]) == 1
@@ -504,7 +505,7 @@ def test_all_different_colors():
 
     # Each color appears exactly once
     for c in [1, 2, 3, 4, 5, 6]:
-        mask = result["local"]["is_color"][str(c)]
+        mask = result["local"]["is_color"][c]
         total = sum(sum(row) for row in mask)
         assert total == 1  # Exactly one pixel has this color
 
@@ -518,12 +519,12 @@ def test_checkerboard_pattern():
     result = phi_signature_tables(X)
 
     # Color 0 appears at 8 positions
-    mask_0 = result["local"]["is_color"]["0"]
+    mask_0 = result["local"]["is_color"][0]
     total_0 = sum(sum(row) for row in mask_0)
     assert total_0 == 8
 
     # Color 1 appears at 8 positions
-    mask_1 = result["local"]["is_color"]["1"]
+    mask_1 = result["local"]["is_color"][1]
     total_1 = sum(sum(row) for row in mask_1)
     assert total_1 == 8
 
