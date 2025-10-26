@@ -8,6 +8,7 @@ and form the finite Boolean basis for Step-2 (P+Φ/GLUE) solver.
 Phase 4 Work Orders:
 - P4-01: Index Predicates (parity_mask, rowmod_mask, colmod_mask)
 - P4-02: NPS Bands (row_band_masks, col_band_masks)
+- P4-03: Local Content (is_color_mask, touching_color_mask)
 
 Public API:
 - parity_mask(g) → (M0, M1)
@@ -15,6 +16,8 @@ Public API:
 - colmod_mask(g, k) → [M0, ..., M{k-1}]
 - row_band_masks(g) → [B0, ..., Bn]
 - col_band_masks(g) → [B0, ..., Bn]
+- is_color_mask(g, color) → M (0/1 mask)
+- touching_color_mask(g, color) → T (0/1 mask, 4-neighbor dilation)
 
 All masks are 0/1 grids with shape(mask) == shape(g), forming disjoint partitions.
 
@@ -364,3 +367,152 @@ def col_band_masks(g: list[list[int]]) -> list[list[list[int]]]:
         masks.append(mask)
 
     return masks
+
+
+def is_color_mask(g: list[list[int]], color: int) -> list[list[int]]:
+    """
+    Compute color mask: pixels matching a specific color.
+
+    Returns a 0/1 mask M where:
+    - M[r][c] == 1 iff g[r][c] == color
+    - M[r][c] == 0 otherwise
+
+    Properties:
+    - Input-only: depends on grid values (Φ.3 stability)
+    - Shape: shape(M) == shape(g)
+    - Color domain: color must be in [0..9] (ARC color range)
+
+    Args:
+        g: Input grid (list of lists of ints)
+        color: Color value to match (must be in 0..9)
+
+    Returns:
+        0/1 mask with shape == shape(g), where 1 indicates color match
+
+    Raises:
+        ValueError: If g is ragged or color not in [0..9]
+
+    Examples:
+        >>> is_color_mask([], 5)
+        []
+
+        >>> is_color_mask([[1]], 1)
+        [[1]]
+
+        >>> is_color_mask([[1]], 2)
+        [[0]]
+
+        >>> is_color_mask([[1, 2], [2, 1]], 2)
+        [[0, 1], [1, 0]]
+    """
+    _validate_rectangular(g)
+
+    if color < 0 or color > 9:
+        raise ValueError(f"Color must be in [0..9], got {color}")
+
+    if not g:
+        return []
+
+    h = len(g)
+    w = len(g[0])
+
+    # Create mask: 1 where g[r][c] == color, else 0
+    mask = [[0] * w for _ in range(h)]
+    for r in range(h):
+        for c in range(w):
+            if g[r][c] == color:
+                mask[r][c] = 1
+
+    return mask
+
+
+def touching_color_mask(g: list[list[int]], color: int) -> list[list[int]]:
+    """
+    Compute touching mask: pixels that are 4-neighbors of a color (but not that color).
+
+    Returns a 0/1 mask T where:
+    - T[r][c] == 1 iff:
+        - At least one 4-neighbor (r±1,c) or (r,c±1) has g[neighbor] == color
+        - AND g[r][c] != color (exclude the color cells themselves)
+    - T[r][c] == 0 otherwise
+
+    This is a single-step 4-neighbor dilation of the color set, excluding the color itself.
+
+    Properties:
+    - Input-only: depends on grid values and structure (Φ.3 stability)
+    - 4-neighbors only: {(r-1,c), (r+1,c), (r,c-1), (r,c+1)} - NO diagonals
+    - Single-step: immediate neighbors only, not multi-hop
+    - Disjoint from is_color_mask: T & M have no overlap
+    - Boundary handling: out-of-bounds neighbors ignored (no wrap-around)
+
+    Args:
+        g: Input grid (list of lists of ints)
+        color: Color value to check neighbors for (must be in 0..9)
+
+    Returns:
+        0/1 mask with shape == shape(g), where 1 indicates touching the color
+
+    Raises:
+        ValueError: If g is ragged or color not in [0..9]
+
+    Examples:
+        >>> touching_color_mask([], 5)
+        []
+
+        >>> touching_color_mask([[1]], 1)
+        [[0]]
+
+        >>> touching_color_mask([[5, 0], [0, 0]], 5)
+        [[0, 1], [1, 0]]
+        # Cell (0,1) and (1,0) are 4-neighbors of (0,0) which has color 5
+
+        >>> touching_color_mask([[0, 5, 0]], 5)
+        [[1, 0, 1]]
+        # Cells (0,0) and (0,2) touch (0,1) which has color 5
+
+        >>> touching_color_mask([[5, 5], [5, 5]], 5)
+        [[0, 0], [0, 0]]
+        # All cells ARE color 5, so no touching (touching excludes color cells)
+    """
+    _validate_rectangular(g)
+
+    if color < 0 or color > 9:
+        raise ValueError(f"Color must be in [0..9], got {color}")
+
+    if not g:
+        return []
+
+    h = len(g)
+    w = len(g[0])
+
+    # Create touching mask
+    mask = [[0] * w for _ in range(h)]
+
+    # For each pixel, check if any 4-neighbor has the target color
+    for r in range(h):
+        for c in range(w):
+            # Exclude cells that are already the target color
+            if g[r][c] == color:
+                mask[r][c] = 0
+                continue
+
+            # Check 4-neighbors: (r-1,c), (r+1,c), (r,c-1), (r,c+1)
+            neighbors = [
+                (r - 1, c),  # up
+                (r + 1, c),  # down
+                (r, c - 1),  # left
+                (r, c + 1),  # right
+            ]
+
+            # If any valid neighbor has the target color, mark as touching
+            touching = False
+            for nr, nc in neighbors:
+                # Check bounds
+                if 0 <= nr < h and 0 <= nc < w:
+                    if g[nr][nc] == color:
+                        touching = True
+                        break
+
+            mask[r][c] = 1 if touching else 0
+
+    return mask
