@@ -49,8 +49,8 @@ def hash_candidate(
     # Validate P_desc
     if "name" not in P_desc or "index" not in P_desc:
         raise ValueError("P_desc must contain 'name' and 'index' fields")
-    if not isinstance(P_desc["index"], int) or P_desc["index"] < 0:
-        raise ValueError("P_desc['index'] must be non-negative integer")
+    if not isinstance(P_desc["index"], int) or P_desc["index"] < -1:
+        raise ValueError("P_desc['index'] must be >= -1 (Identity uses -1, GLOBAL_MENU uses 0+)")
 
     # Build canonical payload
     payload = {

@@ -262,13 +262,27 @@ def test_missing_p_desc_index():
 
 
 def test_negative_p_index():
-    """Negative P index → ValueError."""
-    P_desc = {"name": "BadFamily", "index": -1}
+    """P index < -1 → ValueError."""
+    P_desc = {"name": "BadFamily", "index": -2}
     classes = {0: [(0, 0, 0)]}
     actions = {0: ("set_color", 1)}
 
-    with pytest.raises(ValueError, match="must be non-negative integer"):
+    with pytest.raises(ValueError, match="must be >= -1"):
         hash_candidate(P_desc, classes, actions)
+
+
+def test_identity_with_index_minus_one():
+    """Identity with index=-1 → valid (Identity is first in {Id}∪GLOBAL_MENU)."""
+    P_desc = {"name": "Identity", "index": -1}
+    classes = {0: [(0, 0, 0)]}
+    actions = {0: ("set_color", 1)}
+
+    # Should succeed (Identity uses index=-1)
+    hash_result = hash_candidate(P_desc, classes, actions)
+    mdl_result = compute_mdl(P_desc, classes, actions)
+
+    assert isinstance(hash_result, str) and len(hash_result) == 64
+    assert mdl_result[2] == -1  # p_index should be -1
 
 
 def test_invalid_coord_format():
