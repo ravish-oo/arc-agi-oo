@@ -46,43 +46,49 @@ class BlockDownFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE (kH, kW, reducer) tuple that works for ALL train pairs.
+        Feasibility fit for Step-2 architecture.
+
+        In Step-2, BlockDown is a preprocessing step combined with Φ/GLUE.
+        This method learns consistent integer block sizes (kH, kW) across all
+        training pairs based on dimension ratios. It uses a default reducer
+        ("center") without verifying FY - that's handled by P + Φ/GLUE composition.
 
         Algorithm:
             1. If train_pairs is empty: return False
             2. Extract first pair (X0, Y0) and compute dims
-            3. Handle edge cases (empty dimensions)
-            4. Compute candidate block sizes: kH = R0 // RY0, kW = C0 // CY0
-            5. Verify integer division (modulo check)
-            6. Verify same (kH, kW) works for all remaining pairs
-            7. Try each reducer in order: {center, majority, min, max, first_nonzero}
-            8. For first reducer satisfying FY on ALL pairs: store params and return True
-            9. If no reducer works: return False
+            3. Compute candidate block sizes: kH = R0 // RY0, kW = C0 // CY0
+            4. Verify integer division (exact multiple required)
+            5. Verify same (kH, kW) dimension ratios hold for all remaining pairs
+            6. Store params with default reducer="center" and return True
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found (kH, kW, reducer) that satisfies FY on all pairs; False otherwise
+            True if found consistent (kH, kW) dimension ratios; False otherwise
 
         Edge cases:
             - Empty train_pairs: return False
             - Empty grids: return False (cannot infer block size)
-            - Identity downsampling (kH=kW=1): pass-through
+            - Identity downsampling (kH=kW=1): accept (valid feasibility)
             - Non-integer ratio: return False
             - Upsampling (Y larger than X): return False
             - Inconsistent block sizes across pairs: return False
-            - All reducers fail FY: return False
 
         Determinism:
             - Block sizes learned from first pair only
-            - Reducers tried in exact order: center, majority, min, max, first_nonzero
-            - First reducer satisfying FY on ALL pairs wins
+            - Default reducer is always "center"
             - Verification order is train_pairs[1:] (stable)
 
         Purity:
             - Never mutates train_pairs
             - No side effects beyond setting params
+
+        Step-2 Contract:
+            - Feasibility check (consistent dimension ratios)
+            - Does NOT require apply(X) == Y
+            - Uses default reducer (Φ/GLUE will handle pixel-level matching)
+            - FY constraint enforced at candidate level
         """
         # Empty train_pairs edge case
         if not train_pairs:
@@ -121,7 +127,7 @@ class BlockDownFamily:
         if kH_candidate <= 0 or kW_candidate <= 0:
             return False
 
-        # Verify same (kH, kW) works for all remaining pairs
+        # Verify same (kH, kW) dimension ratios hold for all remaining pairs
         for pair in train_pairs[1:]:
             X = pair["input"]
             Y = pair["output"]
@@ -152,17 +158,12 @@ class BlockDownFamily:
             if kH_check != kH_candidate or kW_check != kW_candidate:
                 return False  # Inconsistent block sizes
 
-        # Try each reducer in deterministic order
-        for reducer in self.ALLOWED_REDUCERS:
-            if self._try_reducer(train_pairs, kH_candidate, kW_candidate, reducer):
-                # This reducer works for ALL pairs
-                self.params.kH = kH_candidate
-                self.params.kW = kW_candidate
-                self.params.reducer = reducer
-                return True  # First-acceptable wins
-
-        # No reducer satisfied FY on all pairs
-        return False
+        # Consistent block sizes found - accept as feasible
+        # Use default reducer (Φ/GLUE will verify pixel-level correctness)
+        self.params.kH = kH_candidate
+        self.params.kW = kW_candidate
+        self.params.reducer = "center"  # Default reducer for Step-2
+        return True
 
     def _try_reducer(self, train_pairs: list[dict], kH: int, kW: int, reducer: str) -> bool:
         """

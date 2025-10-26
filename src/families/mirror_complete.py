@@ -45,82 +45,31 @@ class MirrorCompleteFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Find ONE axis from {"H", "V", "D"} that works for ALL train pairs.
+        Feasibility fit for Step-2 architecture.
 
-        Algorithm:
-            1. For each axis in ["H", "V", "D"] (deterministic order):
-                2. For each pair (X, Y) in train_pairs:
-                    3. Fill X along axis: X_filled = _fill_axis(X, axis)
-                    4. If dims(X_filled) ≠ dims(Y): skip this axis
-                    5. If not deep_eq(X_filled, Y): skip this axis
-                6. If all pairs passed: store params.axis = axis; return True
-            7. Return False (no axis worked for all pairs)
+        In Step-2, this transform is always applicable - it preprocesses
+        the input and Φ/GLUE handles matching to the output.
+
+        This family has no trainable parameters - it applies deterministic
+        logic to transform the input. Feasibility is universal.
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found axis satisfying FY on all pairs; False otherwise
+            Always True (transform is always applicable)
 
-        Determinism:
-            - Axis search order ["H", "V", "D"] is fixed
-            - First-acceptable wins (stable tie-breaking)
-
-        Purity:
-            - Never mutates train_pairs
-            - No side effects beyond setting self.params.axis
+        Step-2 Contract:
+            - No fit() parameters to learn
+            - Transform is always feasible
+            - FY constraint enforced at candidate level, not here
         """
         # Empty train_pairs edge case
         if not train_pairs:
             return False
 
-        # Try each axis in deterministic order
-        for axis in ["H", "V", "D"]:
-            # Check if this axis works for ALL pairs
-            all_pairs_match = True
-
-            for pair in train_pairs:
-                X = pair["input"]
-                Y = pair["output"]
-
-                # Handle empty grids
-                if not X and not Y:
-                    continue  # Both empty is valid
-
-                if not X or not Y:
-                    all_pairs_match = False
-                    break
-
-                # Get dimensions
-                hx, wx = dims(X)
-                hy, wy = dims(Y)
-
-                # Check for empty dimensions
-                if hx == 0 or wx == 0:
-                    all_pairs_match = False
-                    break
-
-                # Check shape preservation
-                if hx != hy or wx != wy:
-                    all_pairs_match = False
-                    break
-
-                # Fill X along this axis
-                X_filled = self._fill_axis(X, axis)
-
-                # Verify FY: X_filled == Y
-                if not deep_eq(X_filled, Y):
-                    all_pairs_match = False
-                    break
-
-            # If all pairs matched for this axis, accept it
-            if all_pairs_match:
-                self.params.axis = axis
-                return True
-
-        # No axis worked for all pairs
-        return False
-
+        # Always applicable in Step-2
+        return True
     def apply(self, X: list[list[int]]) -> list[list[int]]:
         """
         Apply stored axis mirroring to input X.

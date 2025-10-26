@@ -46,20 +46,24 @@ class NPSUpFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE (row_factors, col_factors) from first pair that works for ALL pairs.
-        Each pair computes its own boundaries from its X (input-only during verification).
+        Feasibility fit for Step-2 architecture.
+
+        In Step-2, NPSUp is a preprocessing step combined with Φ/GLUE.
+        This method learns replication factors from the first training pair
+        and verifies band count consistency across all pairs. It does NOT
+        require pixel-level exactness - that's handled by P + Φ/GLUE composition.
 
         Algorithm:
             1. If train_pairs is empty: return False
-            2. Extract first pair and learn factors from it
-            3. Verify learned factors work on ALL remaining pairs
-            4. Store factors and return True if all match
+            2. Extract first pair and learn factors from dimension ratios
+            3. Verify all remaining pairs have same band count structure
+            4. Store factors and return True (let Φ/GLUE handle pixel matching)
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found factors that satisfy FY on all pairs; False otherwise
+            True if found consistent band structure with integer factors; False otherwise
 
         Φ.3 Input-Only Constraint (CRITICAL):
             - During fit(): can examine both X and Y to learn factors
@@ -69,11 +73,16 @@ class NPSUpFamily:
         Determinism:
             - Always learn from first pair (train_pairs[0])
             - boundaries_by_any_change is deterministic
-            - Verification order is stable
 
         Purity:
             - Never mutates train_pairs
             - No side effects beyond setting params
+
+        Step-2 Contract:
+            - Feasibility check (band count consistency + integer factors)
+            - Does NOT require apply(X) == Y
+            - P + Φ/GLUE will handle actual transformation
+            - FY constraint enforced at candidate level
         """
         # Empty train_pairs edge case
         if not train_pairs:
@@ -95,10 +104,14 @@ class NPSUpFamily:
 
         row_factors, col_factors = factors
 
-        # Verify learned factors work on ALL pairs
-        for pair in train_pairs:
+        # Verify all remaining pairs have consistent band count structure
+        for pair in train_pairs[1:]:
             X = pair["input"]
             Y = pair["output"]
+
+            # Handle empty grids
+            if not X or not Y:
+                return False
 
             # Check that X has same band structure as first pair
             H, W = dims(X)
@@ -111,14 +124,8 @@ class NPSUpFamily:
             if num_row_bands != len(row_factors) or num_col_bands != len(col_factors):
                 return False  # Band structure mismatch
 
-            # Compute predicted output using learned factors
-            Y_predicted = self._upsample_with_factors(X, row_factors, col_factors)
-
-            # Check bit-for-bit equality
-            if not deep_eq(Y_predicted, Y):
-                return False  # FY violation
-
-        # All pairs match - store factors
+        # Consistent band structure found - accept as feasible
+        # Store factors (Φ/GLUE will verify pixel-level correctness)
         self.params.row_factors = row_factors
         self.params.col_factors = col_factors
         return True

@@ -45,69 +45,31 @@ class SortColsLexFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Verify that Y == sorted_cols(X) for ALL training pairs.
+        Feasibility fit for Step-2 architecture.
 
-        No parameters are learned; this is a pure verification step.
+        In Step-2, this transform is always applicable - it preprocesses
+        the input and Φ/GLUE handles matching to the output.
+
+        This family has no trainable parameters - it applies deterministic
+        logic to transform the input. Feasibility is universal.
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if ALL pairs satisfy Y == sorted_cols(X) exactly; False otherwise
+            Always True (transform is always applicable)
 
-        Algorithm:
-            1. If train_pairs is empty: return False
-            2. For each pair (X, Y):
-                a. Check dims(X) == dims(Y) (sorting preserves shape)
-                b. Compute sorted_cols_X = sorted_cols(X)
-                c. If not deep_eq(sorted_cols_X, Y): return False
-            3. If all pairs pass: return True
-
-        Determinism:
-            - Python's sorted() is stable and deterministic
-
-        Purity:
-            - Never mutates train_pairs
-            - No side effects
+        Step-2 Contract:
+            - No fit() parameters to learn
+            - Transform is always feasible
+            - FY constraint enforced at candidate level, not here
         """
         # Empty train_pairs edge case
         if not train_pairs:
             return False
 
-        # Verify each pair
-        for pair in train_pairs:
-            X = pair["input"]
-            Y = pair["output"]
-
-            # Handle empty grids
-            if not X and not Y:
-                continue  # Both empty is valid
-
-            if not X or not Y:
-                return False  # One empty but not the other
-
-            # Get dimensions
-            hx, wx = dims(X)
-            hy, wy = dims(Y)
-
-            # Check for empty dimensions
-            if hx == 0 or wx == 0:
-                return False
-
-            # Check shape preservation
-            if hx != hy or wx != wy:
-                return False  # Sorting preserves dimensions
-
-            # Sort columns of X lexicographically
-            sorted_cols_X = self._sort_cols(X)
-
-            # Verify FY: sorted_cols(X) == Y
-            if not deep_eq(sorted_cols_X, Y):
-                return False
-
-        # All pairs satisfied
+        # Always applicable in Step-2
         return True
-
     def apply(self, X: list[list[int]]) -> list[list[int]]:
         """
         Apply lexicographic column sorting to input X.

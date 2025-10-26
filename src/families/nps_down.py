@@ -44,42 +44,49 @@ class NPSDownFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE reducer that works for ALL train pairs.
-        Each pair computes its own boundaries from its X (input-only, Φ.3).
+        Feasibility fit for Step-2 architecture.
+
+        In Step-2, NPSDown is a preprocessing step combined with Φ/GLUE.
+        This method verifies that input-derived boundaries produce compatible
+        output dimensions across all training pairs. It uses a default reducer
+        ("center") without verifying FY - that's handled by P + Φ/GLUE composition.
 
         Algorithm:
             1. If train_pairs is empty: return False
             2. Verify all pairs have shape compatibility (num_bands from X matches Y dims)
-            3. Try each reducer in deterministic order
-            4. For first reducer satisfying FY on ALL pairs: store and return True
-            5. If no reducer works: return False
+            3. Store default reducer="center" and return True
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found reducer that satisfies FY on all pairs; False otherwise
+            True if all pairs have compatible band/output dimensions; False otherwise
 
         Φ.3 Input-Only Constraint (CRITICAL):
             - Boundaries computed ONLY from X via boundaries_by_any_change(X, axis)
             - NEVER compute boundaries from Y or any target-dependent feature
             - Each pair computes its own boundaries from its X
-            - Reducer is the ONLY learned parameter; boundaries recomputed in apply()
+            - Reducer is default; boundaries recomputed in apply()
 
         Determinism:
-            - Reducers tried in exact order: center, majority, min, max, first_nonzero
-            - First reducer satisfying FY on ALL pairs wins
             - boundaries_by_any_change is deterministic
+            - Default reducer is always "center"
 
         Purity:
             - Never mutates train_pairs
             - No side effects beyond setting params.reducer
+
+        Step-2 Contract:
+            - Feasibility check (shape compatibility)
+            - Does NOT require apply(X) == Y
+            - Uses default reducer (Φ/GLUE will handle pixel-level matching)
+            - FY constraint enforced at candidate level
         """
         # Empty train_pairs edge case
         if not train_pairs:
             return False
 
-        # Pre-check: verify all pairs have shape compatibility
+        # Verify all pairs have shape compatibility
         # (num_row_bands from X must equal Y rows, num_col_bands from X must equal Y cols)
         for pair in train_pairs:
             X = pair["input"]
@@ -106,15 +113,10 @@ class NPSDownFamily:
             if num_row_bands != RY or num_col_bands != CY:
                 return False  # Shape mismatch
 
-        # Try each reducer in deterministic order
-        for reducer in self.ALLOWED_REDUCERS:
-            if self._try_reducer(train_pairs, reducer):
-                # This reducer works for ALL pairs
-                self.params.reducer = reducer
-                return True  # First-acceptable wins
-
-        # No reducer satisfied FY on all pairs
-        return False
+        # Shape-compatible - accept as feasible
+        # Use default reducer (Φ/GLUE will verify pixel-level correctness)
+        self.params.reducer = "center"  # Default reducer for Step-2
+        return True
 
     def _try_reducer(self, train_pairs: list[dict], reducer: str) -> bool:
         """

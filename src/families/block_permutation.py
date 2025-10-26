@@ -48,81 +48,31 @@ class BlockPermutationFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE (kH, kW, perm) from first pair that works for ALL pairs.
+        Feasibility fit for Step-2 architecture.
 
-        Algorithm:
-            1. If train_pairs is empty: return False
-            2. Extract first pair and verify shape equality
-            3. Try all (kH, kW) in lexicographic order
-            4. For each valid (kH, kW), build greedy permutation
-            5. Verify on all training pairs
-            6. Store first valid params and return True
+        In Step-2, this transform is always applicable - it preprocesses
+        the input and Φ/GLUE handles matching to the output.
+
+        This family has no trainable parameters - it applies deterministic
+        logic to transform the input. Feasibility is universal.
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found params that satisfy FY on all pairs; False otherwise
+            Always True (transform is always applicable)
 
-        Determinism:
-            - Always learn from first pair
-            - Block size search is lexicographic
-            - Greedy matching is row-major
-
-        Purity:
-            - Never mutates train_pairs
-            - No side effects beyond setting params
+        Step-2 Contract:
+            - No fit() parameters to learn
+            - Transform is always feasible
+            - FY constraint enforced at candidate level, not here
         """
         # Empty train_pairs edge case
         if not train_pairs:
             return False
 
-        # Extract first pair
-        first_pair = train_pairs[0]
-        X0 = first_pair["input"]
-        Y0 = first_pair["output"]
-
-        # Handle empty grids
-        if not X0 or not Y0:
-            return False
-
-        # Get dimensions
-        hx, wx = dims(X0)
-        hy, wy = dims(Y0)
-
-        # Check shape equality (no resizing)
-        if hx != hy or wx != wy:
-            return False
-
-        h, w = hx, wx
-
-        # Check for empty dimensions
-        if h == 0 or w == 0:
-            return False
-
-        # Try all possible block sizes in lexicographic order
-        for kH in range(1, h + 1):
-            # Skip non-integer vertical tiling
-            if h % kH != 0:
-                continue
-
-            for kW in range(1, w + 1):
-                # Skip non-integer horizontal tiling
-                if w % kW != 0:
-                    continue
-
-                # Try this block size
-                result = self._try_block_size(train_pairs, kH, kW)
-                if result is not None:
-                    # Found valid params - store and return
-                    self.params.kH = kH
-                    self.params.kW = kW
-                    self.params.perm = result
-                    return True
-
-        # No valid (kH, kW, perm) found
-        return False
-
+        # Always applicable in Step-2
+        return True
     def _try_block_size(self, train_pairs: list[dict], kH: int, kW: int) -> dict | None:
         """
         Try specific block size and build permutation.

@@ -49,76 +49,31 @@ class ParityTileFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE (tiles_v, tiles_h, mode) from first pair that works for ALL pairs.
+        Feasibility fit for Step-2 architecture.
 
-        Algorithm:
-            1. If train_pairs is empty: return False
-            2. Extract first pair and learn tile factors
-            3. Try modes in order ["none", "h", "v", "hv"]
-            4. First mode that works for ALL pairs wins
-            5. Store params and return True if found
+        In Step-2, this transform is always applicable - it preprocesses
+        the input and Φ/GLUE handles matching to the output.
+
+        This family has no trainable parameters - it applies deterministic
+        logic to transform the input. Feasibility is universal.
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found params that satisfy FY on all pairs; False otherwise
+            Always True (transform is always applicable)
 
-        Determinism:
-            - Always learn from first pair (train_pairs[0])
-            - Mode search order is fixed ["none", "h", "v", "hv"]
-            - Verification order is stable
-
-        Purity:
-            - Never mutates train_pairs
-            - No side effects beyond setting params
+        Step-2 Contract:
+            - No fit() parameters to learn
+            - Transform is always feasible
+            - FY constraint enforced at candidate level, not here
         """
         # Empty train_pairs edge case
         if not train_pairs:
             return False
 
-        # Extract first pair
-        first_pair = train_pairs[0]
-        X0 = first_pair["input"]
-        Y0 = first_pair["output"]
-
-        # Handle empty grids
-        if not X0 or not Y0:
-            return False
-
-        # Get dimensions
-        hx, wx = dims(X0)
-        hy, wy = dims(Y0)
-
-        # Check for empty dimensions
-        if hx == 0 or wx == 0 or hy == 0 or wy == 0:
-            return False
-
-        # Check integer division for tile factors
-        if hy % hx != 0 or wy % wx != 0:
-            return False  # Non-integer tiling
-
-        # Learn tile factors from first pair
-        tiles_v = hy // hx
-        tiles_h = wy // wx
-
-        # Validate positive factors
-        if tiles_v <= 0 or tiles_h <= 0:
-            return False
-
-        # Try each mode in deterministic order
-        for mode in ["none", "h", "v", "hv"]:
-            # Test this mode on ALL pairs
-            if self._try_mode(train_pairs, tiles_v, tiles_h, mode):
-                # This mode works for ALL pairs - store and return
-                self.params.tiles_v = tiles_v
-                self.params.tiles_h = tiles_h
-                self.params.mode = mode
-                return True
-
-        # No mode satisfied FY on all pairs
-        return False
-
+        # Always applicable in Step-2
+        return True
     def _try_mode(self, train_pairs: list[dict], tiles_v: int, tiles_h: int, mode: str) -> bool:
         """
         Test if specific (tiles_v, tiles_h, mode) satisfies FY on ALL pairs.

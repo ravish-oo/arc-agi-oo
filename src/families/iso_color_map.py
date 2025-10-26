@@ -40,43 +40,47 @@ class IsoColorMapFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Find ONE (σ, mapping) pair that works for ALL train pairs.
+        Feasibility fit for Step-2 architecture.
+
+        In Step-2, IsoColorMap is a preprocessing step combined with Φ/GLUE.
+        This method finds a (σ, mapping) pair that is shape-safe and has a
+        consistent color mapping across all training pairs. It does NOT require
+        that apply(X) == Y exactly - that's handled by P + Φ/GLUE composition.
 
         Algorithm:
             1. If train_pairs is empty: return False
             2. For each σ in all_isometries() (deterministic order):
-                3. Apply σ to all training inputs: X_sigma_i = apply_isometry(X_i, σ)
-                4. Build candidate mapping from first pair (X_sigma_0, Y_0):
-                    - If dims(X_sigma_0) ≠ dims(Y_0): skip this σ (shape mismatch)
-                    - For each position: learn mapping[X_sigma_0[r][c]] = Y_0[r][c]
-                    - If conflict in first pair: skip this σ
-                5. Verify mapping on ALL remaining pairs:
-                    - For each pair: apply σ, check mapping works, check for conflicts
-                6. If all pairs passed: store (σ, mapping) and return True
-            7. Return False (no (σ, mapping) worked for all pairs)
+                3. Check shape safety: dims(apply_isometry(X, σ)) == dims(Y) for all pairs
+                4. Build consistent mapping from all pairs with conflict detection
+                5. If shape-safe and conflict-free: store (σ, mapping) and return True
+            6. Return False (no feasible (σ, mapping) found)
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found (σ, mapping) that satisfies FY on all pairs; False otherwise
+            True if found shape-safe, conflict-free (σ, mapping); False otherwise
 
         Edge cases:
             - Empty train_pairs: return False
-            - Single pair: accept first matching (σ, mapping)
-            - Identity case (X==Y): σ="id", mapping={c:c for all c}
-            - Isometry only: σ!=id, mapping={c:c}
-            - ColorMap only: σ="id", mapping!=identity
-            - Mixed transforms: return False if no unified (σ, mapping) works
+            - Identity case: σ="id", mapping learned from training
+            - Isometry only: σ!=id, mapping may be identity or custom
+            - ColorMap only: σ="id", mapping learned from training
 
         Determinism:
             - all_isometries() order is fixed
-            - First-acceptable (σ, mapping) wins
+            - First shape-safe, conflict-free (σ, mapping) wins
             - Mapping construction uses row-major scan
 
         Purity:
             - Never mutates train_pairs
             - No side effects beyond setting params
+
+        Step-2 Contract:
+            - Feasibility check (shape safety + consistent mapping)
+            - Does NOT require apply(X) == Y
+            - P + Φ/GLUE will handle actual transformation
+            - FY constraint enforced at candidate level
         """
         # Empty train_pairs edge case
         if not train_pairs:
@@ -98,80 +102,55 @@ class IsoColorMapFamily:
 
     def _try_sigma(self, sigma: str, train_pairs: list[dict]) -> dict[int, int] | None:
         """
-        Try a specific σ: learn mapping from first pair, verify on all pairs.
+        Try a specific σ: check shape safety and learn consistent mapping.
+
+        In Step-2, this method checks feasibility (shape + consistent mapping)
+        rather than exact pixel-level matching. The mapping is built from the
+        overlapping region across all pairs with conflict detection.
 
         Args:
             sigma: Isometry name (from all_isometries())
             train_pairs: Training pairs
 
         Returns:
-            mapping dict if this σ works for all pairs; None if it doesn't
+            mapping dict if this σ is feasible; None if not shape-safe or has conflicts
         """
-        # Build candidate mapping from first pair
-        first_pair = train_pairs[0]
-        X0 = first_pair["input"]
-        Y0 = first_pair["output"]
-
-        # Handle empty grid edge case
-        if not X0:
-            if not Y0:
-                return {}  # Empty mapping for empty grids
-            else:
-                return None  # Dimension mismatch
-
-        # Apply σ to first input
-        X0_sigma = apply_isometry(X0, sigma)
-
-        # Shape safety: check dimensions match
-        if dims(X0_sigma) != dims(Y0):
-            return None  # Skip this σ
-
-        rows, cols = dims(X0_sigma)
-
-        # Build mapping from first pair (pixel-by-pixel comparison)
+        # Build candidate mapping from ALL pairs (shape-agnostic like ColorMap)
         mapping = {}
-        for r in range(rows):
-            for c in range(cols):
-                old_c = X0_sigma[r][c]
-                new_c = Y0[r][c]
 
-                if old_c not in mapping:
-                    # New color mapping
-                    mapping[old_c] = new_c
-                else:
-                    # Check for conflict in first pair
-                    if mapping[old_c] != new_c:
-                        return None  # Conflict: same color maps to different outputs
-
-        # Verify mapping works for all remaining pairs
-        for pair in train_pairs[1:]:
+        for pair in train_pairs:
             X = pair["input"]
             Y = pair["output"]
+
+            # Handle empty grid edge case
+            if not X or not Y:
+                continue  # Skip empty grids
 
             # Apply σ to input
             X_sigma = apply_isometry(X, sigma)
 
-            # Shape safety
+            # Shape safety: check dimensions match
             if dims(X_sigma) != dims(Y):
-                return None  # Skip this σ
+                return None  # Skip this σ (not shape-safe)
 
-            rows_i, cols_i = dims(X_sigma)
+            rows, cols = dims(X_sigma)
 
-            # Verify every pixel follows the learned mapping
-            for r in range(rows_i):
-                for c in range(cols_i):
+            # Build/verify mapping from overlapping region
+            for r in range(rows):
+                for c in range(cols):
                     old_c = X_sigma[r][c]
                     new_c = Y[r][c]
 
                     if old_c not in mapping:
-                        # New color in later pair - add it to mapping (cross-palette learning)
+                        # New color mapping - learn it
                         mapping[old_c] = new_c
-                    elif mapping[old_c] != new_c:
-                        # Conflict: same input color maps to different outputs
-                        return None
+                    else:
+                        # Check for conflict (consistency requirement)
+                        if mapping[old_c] != new_c:
+                            return None  # Conflict: same color maps to different outputs
 
-        # All pairs verified - this (σ, mapping) works!
-        return mapping
+        # Shape-safe and consistent mapping found - accept this σ
+        return mapping if mapping else {}
 
     def apply(self, X: list[list[int]]) -> list[list[int]]:
         """

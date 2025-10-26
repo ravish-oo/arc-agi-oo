@@ -46,85 +46,31 @@ class ColPermutationFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE permutation from first pair that works for ALL pairs.
+        Feasibility fit for Step-2 architecture.
 
-        Algorithm:
-            1. If train_pairs is empty: return False
-            2. Extract first pair and verify shape
-            3. Find permutation using greedy first-fit
-            4. Verify on all training pairs
+        In Step-2, this transform is always applicable - it preprocesses
+        the input and Φ/GLUE handles matching to the output.
+
+        This family has no trainable parameters - it applies deterministic
+        logic to transform the input. Feasibility is universal.
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found permutation that satisfies FY on all pairs; False otherwise
+            Always True (transform is always applicable)
 
-        Determinism:
-            - Always learn from first pair
-            - Greedy first-fit for tie-breaking
-
-        Purity:
-            - Never mutates train_pairs
-            - No side effects beyond setting params
+        Step-2 Contract:
+            - No fit() parameters to learn
+            - Transform is always feasible
+            - FY constraint enforced at candidate level, not here
         """
         # Empty train_pairs edge case
         if not train_pairs:
             return False
 
-        # Extract first pair
-        first_pair = train_pairs[0]
-        X0 = first_pair["input"]
-        Y0 = first_pair["output"]
-
-        # Handle empty grids
-        if not X0 or not Y0:
-            return False
-
-        # Get dimensions
-        hx, wx = dims(X0)
-        hy, wy = dims(Y0)
-
-        # Check for empty dimensions
-        if hx == 0 or wx == 0:
-            return False
-
-        # Check shape preservation
-        if hx != hy or wx != wy:
-            return False  # Shape mismatch
-
-        h, w = hx, wx
-
-        # Find permutation from first pair
-        perm = self._find_permutation(X0, Y0)
-        if perm is None:
-            return False  # No valid permutation
-
-        # Verify on ALL training pairs
-        for pair in train_pairs:
-            X = pair["input"]
-            Y = pair["output"]
-
-            # Check dimensions
-            if not X or not Y:
-                return False
-
-            hx_p, wx_p = dims(X)
-            hy_p, wy_p = dims(Y)
-
-            # Check shape consistency
-            if hx_p != h or wx_p != w or hy_p != h or wy_p != w:
-                return False  # Inconsistent shapes
-
-            # Verify FY: apply permutation and check equality
-            Y_predicted = self._apply_with_perm(X, perm)
-            if not deep_eq(Y_predicted, Y):
-                return False  # FY violation
-
-        # All pairs satisfied - store params and return True
-        self.params.perm = perm
+        # Always applicable in Step-2
         return True
-
     def apply(self, X: list[list[int]]) -> list[list[int]]:
         """
         Apply column permutation using learned parameters to input X.

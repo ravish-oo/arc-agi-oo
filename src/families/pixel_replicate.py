@@ -38,40 +38,47 @@ class PixelReplicateFamily:
 
     def fit(self, train_pairs: list[dict]) -> bool:
         """
-        Learn ONE (kH, kW) pair that works for ALL train pairs.
+        Feasibility fit for Step-2 architecture.
+
+        In Step-2, PixelReplicate is a preprocessing step combined with Φ/GLUE.
+        This method learns consistent integer scaling factors (kH, kW) across all
+        training pairs based on dimension ratios. It does NOT require that the
+        replicated output matches exactly - that's handled by P + Φ/GLUE composition.
 
         Algorithm:
             1. If train_pairs is empty: return False
             2. Extract first pair (X0, Y0) and compute dims
-            3. Handle edge cases (empty dimensions)
-            4. Compute candidate scaling factors: kH = RY0 / R0, kW = CY0 / C0
-            5. Verify integer division (modulo check)
-            6. Verify same (kH, kW) works for all remaining pairs
-            7. Verify FY on ALL pairs (bit-for-bit equality)
-            8. Store params and return True
+            3. Compute candidate scaling factors: kH = RY0 / R0, kW = CY0 / C0
+            4. Verify integer division (exact multiple required)
+            5. Verify same (kH, kW) dimension ratios hold for all remaining pairs
+            6. Store params and return True (let Φ/GLUE handle pixel-level matching)
 
         Args:
             train_pairs: list of {"input": grid, "output": grid} dicts
 
         Returns:
-            True if found (kH, kW) that satisfies FY on all pairs; False otherwise
+            True if found consistent (kH, kW) dimension ratios; False otherwise
 
         Edge cases:
             - Empty train_pairs: return False
-            - Empty grids: handled (check for zero dimensions)
-            - Identity scaling (kH=kW=1): pass-through
-            - Non-integer ratio: return False
+            - Empty grids: return False (can't define scaling)
+            - Identity scaling (kH=kW=1): accept (valid feasibility)
+            - Non-integer ratio: return False (not a valid pixel replication)
             - Inconsistent scaling across pairs: return False
-            - Zero or negative dimensions: return False
 
         Determinism:
             - Scaling factors learned from first pair only
             - Verification order is train_pairs[1:] (stable)
-            - Integer division check is deterministic
 
         Purity:
             - Never mutates train_pairs
             - No side effects beyond setting params
+
+        Step-2 Contract:
+            - Feasibility check (consistent dimension ratios)
+            - Does NOT require apply(X) == Y
+            - P + Φ/GLUE will handle actual transformation
+            - FY constraint enforced at candidate level
         """
         # Empty train_pairs edge case
         if not train_pairs:
@@ -83,20 +90,14 @@ class PixelReplicateFamily:
         Y0 = first_pair["output"]
 
         # Handle empty grid edge case
-        if not X0:
-            if not Y0:
-                # Both empty - accept with undefined kH/kW (special case)
-                # Actually, we can't define kH/kW for empty grids, so return False
-                return False
-            else:
-                # X empty but Y non-empty - impossible
-                return False
+        if not X0 or not Y0:
+            return False  # Can't learn scaling factors from empty grids
 
         # Get dimensions
         R0, C0 = dims(X0)
         RY0, CY0 = dims(Y0)
 
-        # Check for zero dimensions (shouldn't happen after empty check, but be safe)
+        # Check for zero dimensions
         if R0 == 0 or C0 == 0:
             return False
 
@@ -112,17 +113,14 @@ class PixelReplicateFamily:
         if kH_candidate <= 0 or kW_candidate <= 0:
             return False
 
-        # Verify same (kH, kW) works for all remaining pairs
+        # Verify same (kH, kW) dimension ratios hold for all remaining pairs
         for pair in train_pairs[1:]:
             X = pair["input"]
             Y = pair["output"]
 
             # Handle empty grid in later pair
-            if not X:
-                if not Y:
-                    continue  # Both empty, skip
-                else:
-                    return False  # X empty but Y non-empty
+            if not X or not Y:
+                return False  # Can't verify consistency with empty grids
 
             R, C = dims(X)
             RY, CY = dims(Y)
@@ -142,27 +140,8 @@ class PixelReplicateFamily:
             if kH_check != kH_candidate or kW_check != kW_candidate:
                 return False  # Inconsistent scaling
 
-        # Verify FY on ALL pairs (bit-for-bit equality)
-        for pair in train_pairs:
-            X = pair["input"]
-            Y = pair["output"]
-
-            # Handle empty grid edge case
-            if not X:
-                if not Y:
-                    continue  # Both empty, skip
-                else:
-                    return False  # X empty but Y non-empty
-
-            # Compute predicted output using candidate factors
-            Y_predicted = self._replicate_with_factors(X, kH_candidate, kW_candidate)
-
-            # Check bit-for-bit equality
-            if Y_predicted != Y:
-                return False  # FY violation
-
-        # All pairs have consistent scaling factors AND FY exactness verified
-        # Store and return success
+        # Consistent scaling factors found - accept as feasible
+        # Store params (Φ/GLUE will verify pixel-level correctness)
         self.params.kH = kH_candidate
         self.params.kW = kW_candidate
         return True
