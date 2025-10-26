@@ -400,7 +400,7 @@ P4-03 — Local Content: is_color_mask, touching_color_mask (4-neighbor, 1-step)
 P4-04 — Component IDs: component_id_table (8-connected, deterministic tie-break) ✅ COMPLETE
 P4-05 — Patch Canonicalizer Core: OFA + D8 key for arbitrary patch ✅ COMPLETE
 P4-06 — Patchkey Tables r∈{2,3,4}: patchkey_table (5×5, 7×7, 9×9) ✅ COMPLETE
-P4-07 — Φ Aggregator: phi_signature_tables(X) (assemble all features) 
+P4-07 — Φ Aggregator: phi_signature_tables(X) (assemble all features) ✅ COMPLETE
 P4-08 — Φ Test Suite: Φ.3 stability, finiteness, disjointness
 
 ---
