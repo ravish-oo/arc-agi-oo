@@ -619,7 +619,7 @@ python tests/measure_coverage.py data/arc-agi_training_challenges.json --steps 1
 Here’s the Phase-7 lineup (titles only), each ≤500-LOC and self-contained (no forward deps):
 
 * **P7-01 — MDL Primitives:** `hash_candidate`, `compute_mdl` (|classes|, |action_types|, p_index, stable hash)  ✅ COMPLETE
-* **P7-02 — Candidate-for-P Builder:** shape-safety, apply P to trains, Φ-partition, per-class action inference, GLUE verify → return candidate or None 
+* **P7-02 — Candidate-for-P Builder:** shape-safety, apply P to trains, Φ-partition, per-class action inference, GLUE verify → return candidate or None ✅ COMPLETE
 * **P7-03 — Step-2 Solver Core:** loop over **{Identity} ∪ GLOBAL_MENU**, collect all passing candidates, pick best by MDL, apply to tests 
 * **P7-04 — Receipts (Φ mode):** `generate_receipt_phi(P, classes, actions, mdl_candidates)` (include chosen candidate + reasons) 
 * **P7-05 — Coverage Meter Update:** add Step-2 run and delta vs Step-1 in `tests/measure_coverage.py` 
